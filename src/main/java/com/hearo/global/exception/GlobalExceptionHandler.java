@@ -35,7 +35,7 @@ public class GlobalExceptionHandler {
         if (ex instanceof MethodArgumentNotValidException manv) {
             var errors = manv.getBindingResult().getFieldErrors();
             if (!errors.isEmpty()) {
-                var fe = errors.get(0); // Java 17 호환 (getFirst() 대신 get(0))
+                var fe = errors.get(0);
                 message = fe.getField() + ": " + fe.getDefaultMessage();
             }
         } else if (ex instanceof BindException be) {
