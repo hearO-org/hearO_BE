@@ -26,7 +26,7 @@ public class User extends BaseTimeEntity {
 
     @Column(nullable = false) private Boolean enabled;
 
-    @Column(nullable = false) private int tokenVersion = 0;  // 🔸
+    @Column(nullable = false) private int tokenVersion = 0;
 
     public enum AuthType { LOCAL, KAKAO }
 
