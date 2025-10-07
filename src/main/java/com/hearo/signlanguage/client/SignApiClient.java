@@ -3,7 +3,6 @@ package com.hearo.signlanguage.client;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import com.hearo.signlanguage.client.dto.SignRawResponse;
 import lombok.RequiredArgsConstructor;
@@ -46,12 +45,12 @@ public class SignApiClient {
         try {
             XmlMapper xmlMapper = new XmlMapper();
             xmlMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-            JsonNode xmlTree = xmlMapper.readTree(xml.getBytes(StandardCharsets.UTF_8)); // 루트 <response>
+            JsonNode xmlTree = xmlMapper.readTree(xml.getBytes(StandardCharsets.UTF_8));
 
             ObjectMapper jsonMapper = new ObjectMapper()
                     .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
-            ObjectNode wrapped = jsonMapper.createObjectNode();
+            var wrapped = jsonMapper.createObjectNode();
             wrapped.set("response", xmlTree);
 
             return jsonMapper.treeToValue(wrapped, SignRawResponse.class);

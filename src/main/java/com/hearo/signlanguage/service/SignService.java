@@ -8,9 +8,11 @@ import com.hearo.signlanguage.dto.SignItemDto;
 import com.hearo.signlanguage.dto.SignPageDto;
 import com.hearo.signlanguage.repository.SignEntryRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 
 import java.util.Arrays;
 import java.util.List;
@@ -18,6 +20,7 @@ import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class SignService {
 
     private final SignApiClient client;
@@ -49,10 +52,25 @@ public class SignService {
         int totalCount = Integer.MAX_VALUE;
         int totalFetched = 0, inserted = 0, updated = 0;
 
+        log.info("Sign ingest start pageSize={}", pageSize);
+
         while (true) {
-            SignPageDto page = fetchPage(pageNo, pageSize);
+            SignPageDto page;
+
+            // 재시도 + 건너뛰기
+            try {
+                page = fetchPageWithRetry(pageNo, pageSize, 2, 700); // 최대 2회 재시도, 700ms 백오프
+            } catch (Exception e) {
+                log.warn("Sign ingest skip pageNo={} (reason={})", pageNo, rootName(e));
+                // 스킵하고 다음 페이지 진행
+                pageNo++;
+                continue;
+            }
+
             if (pageNo == 1) totalCount = page.getTotalCount();
             if (page.getItems().isEmpty()) break;
+
+            log.info("Sign ingest page start pageNo={} items={}", pageNo, page.getItems().size());
 
             for (SignItemDto dto : page.getItems()) {
                 Optional<SignEntry> opt = repo.findByLocalId(dto.getLocalId());
@@ -76,10 +94,16 @@ public class SignService {
                 }
             }
 
+            log.info("Sign ingest page done pageNo={} inserted+updated={}",
+                    pageNo, page.getItems().size());
+
             totalFetched += page.getItems().size();
             if (totalFetched >= totalCount) break;
             pageNo++;
         }
+
+        log.info("Sign ingest done totalCount={} totalFetched={} inserted={} updated={}",
+                totalCount, totalFetched, inserted, updated);
 
         return new IngestResultDto(totalCount, totalFetched, inserted, updated, pageSize);
     }
@@ -113,6 +137,39 @@ public class SignService {
                 .numOfRows(parseIntDefault(numOfRowsStr, list.size()))
                 .totalCount(parseIntDefault(totalCountStr, list.size()))
                 .build();
+    }
+
+    private SignPageDto fetchPageWithRetry(int pageNo, int pageSize, int maxRetry, long backoffMs) {
+        int attempt = 0;
+        while (true) {
+            try {
+                return fetchPage(pageNo, pageSize);
+            } catch (RuntimeException ex) {
+                attempt++;
+                if (attempt > maxRetry || !isTransient(ex)) {
+                    throw ex;
+                }
+                try { Thread.sleep(backoffMs); } catch (InterruptedException ignored) {}
+            }
+        }
+    }
+
+    private boolean isTransient(Throwable t) {
+        // 네트워크/타임아웃 계열이면 일시 오류로 간주
+        if (t instanceof WebClientRequestException) return true;
+        Throwable c = t.getCause();
+        while (c != null) {
+            if (c instanceof java.net.SocketTimeoutException
+                    || c instanceof io.netty.handler.timeout.ReadTimeoutException) return true;
+            c = c.getCause();
+        }
+        return false;
+    }
+
+    private String rootName(Throwable t) {
+        Throwable c = t;
+        while (c.getCause() != null) c = c.getCause();
+        return c.getClass().getSimpleName();
     }
 
     private SignPageDto toPageDto(SignRawResponse raw) {
