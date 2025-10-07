@@ -75,4 +75,13 @@ public class SignController {
         var res = service.ingestAll(size);
         return ApiResponse.success(SuccessStatus.OK, res);
     }
+
+    // 모든 수어 DB 병렬로 insert
+    @PostMapping("/ingest/all/parallel")
+    public ResponseEntity<ApiResponse<IngestResultDto>> ingestAllParallel(
+            @RequestParam(defaultValue = "500") int size) {
+        var res = service.ingestAllParallel(size);
+        return ApiResponse.success(SuccessStatus.OK, res);
+    }
+
 }

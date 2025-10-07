@@ -6,6 +6,7 @@ import com.hearo.signlanguage.domain.SignEntry;
 import com.hearo.signlanguage.dto.IngestResultDto;
 import com.hearo.signlanguage.dto.SignItemDto;
 import com.hearo.signlanguage.dto.SignPageDto;
+import com.hearo.signlanguage.repository.SignEntryBulkRepository;
 import com.hearo.signlanguage.repository.SignEntryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -14,9 +15,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 
-import java.util.Arrays;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.*;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +25,7 @@ public class SignService {
 
     private final SignApiClient client;
     private final SignEntryRepository repo;
+    private final SignEntryBulkRepository bulk;
 
     public SignPageDto externalList(int pageNo, int numOfRows) {
         SignRawResponse raw = client.fetch(null, pageNo, numOfRows);
@@ -46,23 +47,22 @@ public class SignService {
         return repo.findByTitleContaining(keyword, pageable);
     }
 
+    /** ========== 순차 ingest ========== */
     @Transactional
     public IngestResultDto ingestAll(int pageSize) {
         int pageNo = 1;
         int totalCount = Integer.MAX_VALUE;
-        int totalFetched = 0, inserted = 0, updated = 0;
+        int totalFetched = 0;
 
         log.info("Sign ingest start pageSize={}", pageSize);
 
         while (true) {
             SignPageDto page;
 
-            // 재시도 + 건너뛰기
             try {
-                page = fetchPageWithRetry(pageNo, pageSize, 2, 700); // 최대 2회 재시도, 700ms 백오프
+                page = fetchPageWithRetry(pageNo, pageSize, 2, 700);
             } catch (Exception e) {
                 log.warn("Sign ingest skip pageNo={} (reason={})", pageNo, rootName(e));
-                // 스킵하고 다음 페이지 진행
                 pageNo++;
                 continue;
             }
@@ -70,42 +70,77 @@ public class SignService {
             if (pageNo == 1) totalCount = page.getTotalCount();
             if (page.getItems().isEmpty()) break;
 
-            log.info("Sign ingest page start pageNo={} items={}", pageNo, page.getItems().size());
+            int[] res = bulk.upsertBatch(page.getItems());
+            int affected = Arrays.stream(res).sum();
 
-            for (SignItemDto dto : page.getItems()) {
-                Optional<SignEntry> opt = repo.findByLocalId(dto.getLocalId());
-                if (opt.isEmpty()) {
-                    repo.save(SignEntry.builder()
-                            .localId(dto.getLocalId())
-                            .title(dto.getTitle())
-                            .videoUrl(dto.getVideoUrl())
-                            .thumbnailUrl(dto.getThumbnailUrl())
-                            .signDescription(dto.getSignDescription())
-                            .imagesCsv(String.join(",", dto.getImages()))
-                            .sourceUrl(dto.getSourceUrl())
-                            .collectionDb(dto.getCollectionDb())
-                            .categoryType(dto.getCategoryType())
-                            .viewCount(dto.getViewCount())
-                            .build());
-                    inserted++;
-                } else {
-                    opt.get().updateFrom(dto);
-                    updated++;
-                }
-            }
-
-            log.info("Sign ingest page done pageNo={} inserted+updated={}",
-                    pageNo, page.getItems().size());
+            log.info("Sign ingest page done pageNo={} affectedRows~={}",
+                    pageNo, affected);
 
             totalFetched += page.getItems().size();
             if (totalFetched >= totalCount) break;
             pageNo++;
         }
 
-        log.info("Sign ingest done totalCount={} totalFetched={} inserted={} updated={}",
-                totalCount, totalFetched, inserted, updated);
+        log.info("Sign ingest done totalCount={} totalFetched={}",
+                totalCount, totalFetched);
 
-        return new IngestResultDto(totalCount, totalFetched, inserted, updated, pageSize);
+        return new IngestResultDto(totalCount, totalFetched, 0, 0, pageSize);
+    }
+
+    /** ========== 병렬 ingest ========== */
+    @Transactional
+    public IngestResultDto ingestAllParallel(int pageSize) {
+        int totalCount;
+        int totalFetched = 0;
+
+        log.info("Sign ingest (parallel) start pageSize={}", pageSize);
+
+        ExecutorService executor = Executors.newFixedThreadPool(5);
+        List<Future<SignPageDto>> futures = new ArrayList<>();
+
+        // 1페이지 먼저 호출 → totalCount 계산
+        SignPageDto firstPage = fetchPageWithRetry(1, pageSize, 2, 700);
+        totalCount = firstPage.getTotalCount();
+        int totalPages = (int) Math.ceil((double) totalCount / pageSize);
+
+        // 1페이지 먼저 저장
+        bulk.upsertBatch(firstPage.getItems());
+        totalFetched += firstPage.getItems().size();
+
+        // 2페이지 이후 병렬 제출
+        for (int pageNo = 2; pageNo <= totalPages; pageNo++) {
+            final int p = pageNo;
+            futures.add(executor.submit(() -> {
+                try {
+                    return fetchPageWithRetry(p, pageSize, 2, 700);
+                } catch (Exception e) {
+                    log.warn("skip pageNo={} (reason={})", p, rootName(e));
+                    return null;
+                }
+            }));
+        }
+
+        for (Future<SignPageDto> f : futures) {
+            try {
+                SignPageDto page = f.get();
+                if (page == null || page.getItems().isEmpty()) continue;
+
+                int[] res = bulk.upsertBatch(page.getItems());
+                int affected = Arrays.stream(res).sum();
+                totalFetched += page.getItems().size();
+
+                log.info("pageNo={} done affectedRows~={}", page.getPageNo(), affected);
+            } catch (Exception e) {
+                log.warn("future error: {}", e.toString());
+            }
+        }
+
+        executor.shutdown();
+
+        log.info("Sign ingest parallel done totalCount={} totalFetched={}",
+                totalCount, totalFetched);
+
+        return new IngestResultDto(totalCount, totalFetched, 0, 0, pageSize);
     }
 
     // ===== 내부 헬퍼 =====
@@ -155,7 +190,6 @@ public class SignService {
     }
 
     private boolean isTransient(Throwable t) {
-        // 네트워크/타임아웃 계열이면 일시 오류로 간주
         if (t instanceof WebClientRequestException) return true;
         Throwable c = t.getCause();
         while (c != null) {
@@ -188,7 +222,7 @@ public class SignService {
         return SignPageDto.builder()
                 .items(list)
                 .pageNo(pageNo)
-                .numOfRows(list.size())  // 실제 개수
+                .numOfRows(list.size())
                 .totalCount(totalCount)
                 .build();
     }
