@@ -1,5 +1,6 @@
 package com.hearo.signlanguage.domain;
 
+import com.hearo.global.entity.BaseTimeEntity;
 import com.hearo.signlanguage.dto.SignItemDto;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,7 +17,7 @@ import java.util.List;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @AllArgsConstructor
 @Builder
-public class SignEntry {
+public class SignEntry extends BaseTimeEntity {
 
     @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -49,12 +50,6 @@ public class SignEntry {
     private String categoryType;
 
     private Integer viewCount;
-
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-
-    @PrePersist void onCreate() { this.createdAt = LocalDateTime.now(); this.updatedAt = this.createdAt; }
-    @PreUpdate  void onUpdate() { this.updatedAt = LocalDateTime.now(); }
 
     public void updateFrom(SignItemDto dto) {
         this.title = dto.getTitle();
