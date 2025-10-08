@@ -32,7 +32,11 @@ public enum ErrorStatus {
     CONTACT_ALREADY_EXISTS(HttpStatus.CONFLICT, "CONTACT_ALREADY_EXISTS", "이미 관계가 존재합니다."),
 
     /* 500 INTERNAL_SERVER_ERROR */
-    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다.");
+    INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", "서버 내부 오류가 발생했습니다."),
+
+    /* 429 TOO_MANY_REQUESTS */
+    EXTERNAL_QUOTA(HttpStatus.TOO_MANY_REQUESTS, "EXTERNAL_QUOTA",
+            "외부 KCISA API 일일 호출 제한을 초과했습니다. DB 조회 엔드포인트를 이용해주세요.");
 
     private final HttpStatus status;
     private final String code;

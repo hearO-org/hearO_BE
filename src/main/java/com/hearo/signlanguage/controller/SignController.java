@@ -1,6 +1,7 @@
 package com.hearo.signlanguage.controller;
 
 import com.hearo.global.response.ApiResponse;
+import com.hearo.global.response.ErrorStatus;
 import com.hearo.global.response.SuccessStatus;
 import com.hearo.signlanguage.domain.SignEntry;
 import com.hearo.signlanguage.dto.IngestResultDto;
@@ -18,7 +19,7 @@ public class SignController {
 
     private final SignService service;
 
-    // 외부 API 그대로 조회
+    // 외부 API 전체 조회
     @GetMapping("/external")
     public ResponseEntity<ApiResponse<SignPageDto>> externalList(
             @RequestParam(name = "pageNo", required = false) Integer pageNo,
@@ -28,12 +29,18 @@ public class SignController {
     ) {
         int p = (pageNo != null) ? pageNo : (legacyPage != null ? legacyPage : 1);
         int s = (numOfRows != null) ? numOfRows : (legacySize != null ? legacySize : 10);
-
-        var data = service.externalList(p, s);
-        return ApiResponse.success(SuccessStatus.FETCHED, data);
+        try {
+            var data = service.externalList(p, s);
+            return ApiResponse.success(SuccessStatus.FETCHED, data);
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            if (e.getStatusCode().value() == 429) {
+                return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
+            }
+            throw e;
+        }
     }
 
-    // 외부 API 키워드 검색
+    // 외부 API 키워드 조회
     @GetMapping("/external/search")
     public ResponseEntity<ApiResponse<SignPageDto>> externalSearch(
             @RequestParam String keyword,
@@ -44,12 +51,18 @@ public class SignController {
     ) {
         int p = (pageNo != null) ? pageNo : (legacyPage != null ? legacyPage : 1);
         int s = (numOfRows != null) ? numOfRows : (legacySize != null ? legacySize : 10);
-
-        var data = service.externalSearch(keyword, p, s);
-        return ApiResponse.success(SuccessStatus.FETCHED, data);
+        try {
+            var data = service.externalSearch(keyword, p, s);
+            return ApiResponse.success(SuccessStatus.FETCHED, data);
+        } catch (org.springframework.web.reactive.function.client.WebClientResponseException e) {
+            if (e.getStatusCode().value() == 429) {
+                return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
+            }
+            throw e;
+        }
     }
 
-    // DB 조회
+    // DB 데이터 조회
     @GetMapping
     public ResponseEntity<ApiResponse<Page<SignEntry>>> listFromDb(
             @RequestParam(defaultValue = "1") int page,
@@ -58,7 +71,7 @@ public class SignController {
         return ApiResponse.success(SuccessStatus.FETCHED, data);
     }
 
-    // DB 검색
+    // DB 내에서 수어 검색
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<Page<SignEntry>>> searchFromDb(
             @RequestParam String keyword,

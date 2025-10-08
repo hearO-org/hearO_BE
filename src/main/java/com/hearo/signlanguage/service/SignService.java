@@ -14,9 +14,13 @@ import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 @Service
 @RequiredArgsConstructor
@@ -25,7 +29,9 @@ public class SignService {
 
     private final SignApiClient client;
     private final SignEntryRepository repo;
-    private final SignEntryBulkRepository bulk;
+    private final SignEntryBulkRepository bulkRepo;
+
+    // ===== 조회 =====
 
     public SignPageDto externalList(int pageNo, int numOfRows) {
         SignRawResponse raw = client.fetch(null, pageNo, numOfRows);
@@ -47,103 +53,124 @@ public class SignService {
         return repo.findByTitleContaining(keyword, pageable);
     }
 
-    /** ========== 순차 ingest ========== */
+    // ===== 수집(순차) : totalCount 무시, 빈 페이지 만나면 종료 =====
+
     @Transactional
     public IngestResultDto ingestAll(int pageSize) {
         int pageNo = 1;
-        int totalCount = Integer.MAX_VALUE;
         int totalFetched = 0;
 
         log.info("Sign ingest start pageSize={}", pageSize);
 
         while (true) {
             SignPageDto page;
-
             try {
-                page = fetchPageWithRetry(pageNo, pageSize, 2, 700);
-            } catch (Exception e) {
+                page = fetchPageWithRetry(pageNo, pageSize, 6, 600);
+            } catch (RuntimeException e) {
                 log.warn("Sign ingest skip pageNo={} (reason={})", pageNo, rootName(e));
                 pageNo++;
                 continue;
             }
 
-            if (pageNo == 1) totalCount = page.getTotalCount();
-            if (page.getItems().isEmpty()) break;
+            if (page.getItems().isEmpty()) {
+                log.info("Sign ingest reached empty page. stop at pageNo={}", pageNo);
+                break;
+            }
 
-            int[] res = bulk.upsertBatch(page.getItems());
-            int affected = Arrays.stream(res).sum();
-
-            log.info("Sign ingest page done pageNo={} affectedRows~={}",
-                    pageNo, affected);
-
+            int[] res = bulkRepo.upsertBatch(page.getItems());
             totalFetched += page.getItems().size();
-            if (totalFetched >= totalCount) break;
+            log.info("Sign ingest page done pageNo={} items={} affectedRows~={}",
+                    pageNo, page.getItems().size(), res.length);
+
             pageNo++;
         }
 
-        log.info("Sign ingest done totalCount={} totalFetched={}",
-                totalCount, totalFetched);
-
-        return new IngestResultDto(totalCount, totalFetched, 0, 0, pageSize);
+        log.info("Sign ingest done totalFetched={}", totalFetched);
+        return new IngestResultDto(-1, totalFetched, -1, -1, pageSize);
     }
 
-    /** ========== 병렬 ingest ========== */
+    // ===== 수집(병렬) : for-loop 워커 + 429/Quota 즉시 종료 + 빈 페이지 연속 종료 =====
+
     @Transactional
     public IngestResultDto ingestAllParallel(int pageSize) {
-        int totalCount;
-        int totalFetched = 0;
+        final int WORKERS = 1;          // 동시 API 호출 수 (권장 1~2; 높은 값은 429 유발)
+        final int STOP_AFTER_EMPTY = 8; // 빈 페이지 연속 N회면 종료
+        final int START_PAGE = 1;
 
-        log.info("Sign ingest (parallel) start pageSize={}", pageSize);
+        AtomicInteger nextPage = new AtomicInteger(START_PAGE);
+        AtomicInteger totalFetched = new AtomicInteger(0);
+        AtomicInteger emptyStreak = new AtomicInteger(0);
+        AtomicBoolean stopAll = new AtomicBoolean(false);
 
-        ExecutorService executor = Executors.newFixedThreadPool(5);
-        List<Future<SignPageDto>> futures = new ArrayList<>();
+        log.info("Sign ingest (parallel) start pageSize={} workers={}", pageSize, WORKERS);
 
-        // 1페이지 먼저 호출 → totalCount 계산
-        SignPageDto firstPage = fetchPageWithRetry(1, pageSize, 2, 700);
-        totalCount = firstPage.getTotalCount();
-        int totalPages = (int) Math.ceil((double) totalCount / pageSize);
+        ExecutorService pool = Executors.newFixedThreadPool(WORKERS);
+        CopyOnWriteArrayList<Future<?>> futures = new CopyOnWriteArrayList<>();
 
-        // 1페이지 먼저 저장
-        bulk.upsertBatch(firstPage.getItems());
-        totalFetched += firstPage.getItems().size();
+        for (int workerIdx = 0; workerIdx < WORKERS; workerIdx++) {
+            final int idx = workerIdx;
+            Future<?> future = pool.submit(() -> {
+                while (!stopAll.get() && emptyStreak.get() < STOP_AFTER_EMPTY) {
+                    int pageNo = nextPage.getAndIncrement();
+                    SignPageDto page;
 
-        // 2페이지 이후 병렬 제출
-        for (int pageNo = 2; pageNo <= totalPages; pageNo++) {
-            final int p = pageNo;
-            futures.add(executor.submit(() -> {
-                try {
-                    return fetchPageWithRetry(p, pageSize, 2, 700);
-                } catch (Exception e) {
-                    log.warn("skip pageNo={} (reason={})", p, rootName(e));
-                    return null;
+                    try {
+                        // 429(쿼터 초과) 시 재시도 의미 없으니 retry 0
+                        page = fetchPageWithRetry(pageNo, pageSize, 0, 0);
+                    } catch (RuntimeException e) {
+                        if (isDailyQuotaExceeded(e) || isTooManyRequests(e)) {
+                            stopAll.set(true);
+                            log.warn("Worker={} quota exceeded/429 at pageNo={}, stop all.",
+                                    idx, pageNo);
+                            break;
+                        }
+                        if (isTransient(e)) {
+                            log.warn("Worker={} transient error pageNo={} (reason={}), skip.",
+                                    idx, pageNo, rootName(e));
+                            continue;
+                        }
+                        log.warn("Worker={} non-retryable error pageNo={} (reason={}), skip.",
+                                idx, pageNo, rootName(e));
+                        continue;
+                    }
+
+                    if (page.getItems().isEmpty()) {
+                        int streak = emptyStreak.incrementAndGet();
+                        log.info("Worker={} got empty page pageNo={}, emptyStreak={}/{}",
+                                idx, pageNo, streak, STOP_AFTER_EMPTY);
+                        continue;
+                    } else {
+                        emptyStreak.set(0);
+                    }
+
+                    int[] res = bulkRepo.upsertBatch(page.getItems());
+                    totalFetched.addAndGet(page.getItems().size());
+
+                    log.info("Worker={} pageNo={} done, items={}, affectedRows~={}",
+                            idx, pageNo, page.getItems().size(), res.length);
                 }
-            }));
+            });
+            futures.add(future);
         }
 
-        for (Future<SignPageDto> f : futures) {
+        for (Future<?> f : futures) {
             try {
-                SignPageDto page = f.get();
-                if (page == null || page.getItems().isEmpty()) continue;
-
-                int[] res = bulk.upsertBatch(page.getItems());
-                int affected = Arrays.stream(res).sum();
-                totalFetched += page.getItems().size();
-
-                log.info("pageNo={} done affectedRows~={}", page.getPageNo(), affected);
-            } catch (Exception e) {
-                log.warn("future error: {}", e.toString());
+                f.get();
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            } catch (ExecutionException ee) {
+                log.warn("Parallel ingest worker error: {}", rootName(ee));
             }
         }
 
-        executor.shutdown();
+        pool.shutdownNow();
 
-        log.info("Sign ingest parallel done totalCount={} totalFetched={}",
-                totalCount, totalFetched);
-
-        return new IngestResultDto(totalCount, totalFetched, 0, 0, pageSize);
+        log.info("Sign ingest (parallel) done totalFetched~={}", totalFetched.get());
+        return new IngestResultDto(-1, totalFetched.get(), -1, -1, pageSize);
     }
 
     // ===== 내부 헬퍼 =====
+
     private SignPageDto fetchPage(int pageNo, int pageSize) {
         SignRawResponse raw = client.fetch(null, pageNo, pageSize);
         if (raw == null || raw.getResponse() == null || raw.getResponse().getHeader() == null) {
@@ -162,19 +189,19 @@ public class SignService {
 
         List<SignItemDto> list = items.stream().map(this::mapToItemDto).toList();
 
-        String pageNoStr     = (body != null) ? body.getPageNo()     : null;
-        String numOfRowsStr  = (body != null) ? body.getNumOfRows()  : null;
-        String totalCountStr = (body != null) ? body.getTotalCount() : null;
+        String pageNoStr    = (body != null) ? body.getPageNo()    : null;
+        String numOfRowsStr = (body != null) ? body.getNumOfRows() : null;
 
+        // totalCount는 신뢰하지 않고 실제 개수로 채운다
         return SignPageDto.builder()
                 .items(list)
                 .pageNo(parseIntDefault(pageNoStr, 1))
                 .numOfRows(parseIntDefault(numOfRowsStr, list.size()))
-                .totalCount(parseIntDefault(totalCountStr, list.size()))
+                .totalCount(list.size())
                 .build();
     }
 
-    private SignPageDto fetchPageWithRetry(int pageNo, int pageSize, int maxRetry, long backoffMs) {
+    private SignPageDto fetchPageWithRetry(int pageNo, int pageSize, int maxRetry, long baseBackoffMs) {
         int attempt = 0;
         while (true) {
             try {
@@ -184,18 +211,51 @@ public class SignService {
                 if (attempt > maxRetry || !isTransient(ex)) {
                     throw ex;
                 }
-                try { Thread.sleep(backoffMs); } catch (InterruptedException ignored) {}
+                long sleep = (long) (baseBackoffMs * Math.pow(1.6, attempt - 1));
+                if (isTooManyRequests(ex)) sleep += 2000L; // 429면 더 쉰다
+                try {
+                    Thread.sleep(sleep);
+                } catch (InterruptedException ignored) {
+                    Thread.currentThread().interrupt();
+                    throw ex;
+                }
             }
         }
     }
 
     private boolean isTransient(Throwable t) {
-        if (t instanceof WebClientRequestException) return true;
+        if (t instanceof WebClientRequestException) return true; // 네트워크 이슈
+        if (t instanceof WebClientResponseException wex) {
+            int s = wex.getStatusCode().value();
+            // 429, 5xx는 일시 오류로 간주(필요 시 정책 조절)
+            return s == 429 || s == 502 || s == 503 || s == 504;
+        }
         Throwable c = t.getCause();
         while (c != null) {
             if (c instanceof java.net.SocketTimeoutException
                     || c instanceof io.netty.handler.timeout.ReadTimeoutException) return true;
             c = c.getCause();
+        }
+        return false;
+    }
+
+    private boolean isTooManyRequests(Throwable t) {
+        if (t instanceof WebClientResponseException wex) {
+            return wex.getStatusCode().value() == 429;
+        }
+        return false;
+    }
+
+    private boolean isDailyQuotaExceeded(Throwable t) {
+        if (t instanceof WebClientResponseException wex) {
+            try {
+                String body = wex.getResponseBodyAsString();
+                if (body != null) {
+                    String lower = body.toLowerCase();
+                    // 예: {"message":"Quota exceeded ! You reach the limit of 1000 requests per 1 days","http_status_code":429}
+                    return lower.contains("quota exceeded");
+                }
+            } catch (Exception ignored) { }
         }
         return false;
     }
@@ -216,14 +276,13 @@ public class SignService {
                 .map(this::mapToItemDto)
                 .toList();
 
-        int pageNo     = parseIntDefault(body != null ? body.getPageNo() : null, 1);
-        int totalCount = parseIntDefault(body != null ? body.getTotalCount() : null, list.size());
+        int pageNo = parseIntDefault(body != null ? body.getPageNo() : null, 1);
 
         return SignPageDto.builder()
                 .items(list)
                 .pageNo(pageNo)
                 .numOfRows(list.size())
-                .totalCount(totalCount)
+                .totalCount(list.size())
                 .build();
     }
 
@@ -243,14 +302,17 @@ public class SignService {
     }
 
     private static String nvl(String s) { return (s == null) ? "" : s; }
+
     private static int parseIntDefault(String s, int def) {
         try { return (s == null) ? def : Integer.parseInt(s); }
         catch (NumberFormatException e) { return def; }
     }
+
     private static Integer parseIntOrNull(String s) {
         try { return (s == null) ? null : Integer.parseInt(s); }
         catch (NumberFormatException e) { return null; }
     }
+
     private static List<String> splitCsv(String s) {
         if (s == null || s.isBlank()) return List.of();
         return Arrays.stream(s.split(","))
