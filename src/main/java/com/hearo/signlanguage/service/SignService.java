@@ -1,13 +1,19 @@
+// file: src/main/java/com/hearo/signlanguage/service/SignService.java
 package com.hearo.signlanguage.service;
 
 import com.hearo.signlanguage.client.SignApiClient;
 import com.hearo.signlanguage.client.dto.SignRawResponse;
 import com.hearo.signlanguage.domain.SignEntry;
+import com.hearo.signlanguage.domain.SignFavorite;
 import com.hearo.signlanguage.dto.IngestResultDto;
+import com.hearo.signlanguage.dto.SignDetailDto;
+import com.hearo.signlanguage.dto.SignFavoriteItemDto;
+import com.hearo.signlanguage.dto.SignFavoriteRow;
 import com.hearo.signlanguage.dto.SignItemDto;
 import com.hearo.signlanguage.dto.SignPageDto;
 import com.hearo.signlanguage.repository.SignEntryBulkRepository;
 import com.hearo.signlanguage.repository.SignEntryRepository;
+import com.hearo.signlanguage.repository.SignFavoriteRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.*;
@@ -30,31 +36,109 @@ public class SignService {
     private final SignApiClient client;
     private final SignEntryRepository repo;
     private final SignEntryBulkRepository bulkRepo;
+    private final SignFavoriteRepository favoriteRepo;
 
-    // ===== 조회 =====
-
+    // ===== 외부 조회 =====
     public SignPageDto externalList(int pageNo, int numOfRows) {
         SignRawResponse raw = client.fetch(null, pageNo, numOfRows);
         return toPageDto(raw);
     }
-
     public SignPageDto externalSearch(String keyword, int pageNo, int numOfRows) {
         SignRawResponse raw = client.fetch(keyword, pageNo, numOfRows);
         return toPageDto(raw);
     }
 
+    // ===== DB 조회 =====
     public Page<SignEntry> listFromDb(int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), size, Sort.by("id").descending());
         return repo.findAll(pageable);
     }
-
     public Page<SignEntry> searchFromDb(String keyword, int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(page - 1, 0), size, Sort.by("id").descending());
         return repo.findByTitleContaining(keyword, pageable);
     }
 
-    // ===== 수집(순차) : totalCount 무시, 빈 페이지 만나면 종료 =====
+    // ===== 상세보기 =====
+    public SignDetailDto getDetailById(Long id, Long userIdOrNull) {
+        SignEntry e = repo.findById(id).orElseThrow(() ->
+                new IllegalArgumentException("수어 항목을 찾을 수 없습니다. id=" + id));
+        return toDetailDto(e, userIdOrNull);
+    }
+    public SignDetailDto getDetailByLocalId(String localId, Long userIdOrNull) {
+        SignEntry e = repo.findByLocalId(localId).orElseThrow(() ->
+                new IllegalArgumentException("수어 항목을 찾을 수 없습니다. localId=" + localId));
+        return toDetailDto(e, userIdOrNull);
+    }
+    private SignDetailDto toDetailDto(SignEntry e, Long userIdOrNull) {
+        boolean isFav = (userIdOrNull != null)
+                && favoriteRepo.existsByUserIdAndSignEntryId(userIdOrNull, e.getId());
+        long favCount = favoriteRepo.countBySignEntryId(e.getId());
 
+        return SignDetailDto.builder()
+                .id(e.getId())
+                .localId(e.getLocalId())
+                .title(e.getTitle())
+                .videoUrl(e.getVideoUrl())
+                .thumbnailUrl(e.getThumbnailUrl())
+                .signDescription(e.getSignDescription())
+                .images(splitCsv(e.getImagesCsv()))
+                .sourceUrl(e.getSourceUrl())
+                .collectionDb(e.getCollectionDb())
+                .categoryType(e.getCategoryType())
+                .viewCount(e.getViewCount())
+                .favorite(isFav)
+                .favoriteCount(favCount)
+                .createdAt(e.getCreatedAt())
+                .modifiedAt(e.getModifiedAt())
+                .build();
+    }
+
+    // ===== 즐겨찾기 토글/조회 =====
+    @Transactional
+    public void addFavorite(Long userId, Long signId) {
+        validateUserId(userId);
+        SignEntry entry = repo.findById(signId).orElseThrow(() ->
+                new IllegalArgumentException("수어 항목을 찾을 수 없습니다. id=" + signId));
+        if (favoriteRepo.existsByUserIdAndSignEntryId(userId, signId)) return; // 멱등
+        favoriteRepo.save(SignFavorite.of(userId, entry));
+    }
+
+    @Transactional
+    public void removeFavorite(Long userId, Long signId) {
+        validateUserId(userId);
+        favoriteRepo.deleteByUserIdAndSignEntryId(userId, signId); // 존재하지 않아도 멱등
+    }
+
+    /** 마이페이지용: 내가 찜한 수어 리스트(최신순 페이지) */
+    public Page<SignFavoriteItemDto> listMyFavorites(Long userId, int page, int size) {
+        validateUserId(userId);
+        Pageable pageable = PageRequest.of(Math.max(page - 1, 0), size);
+        Page<SignFavoriteRow> rows = favoriteRepo.findFavoriteRows(userId, pageable);
+        return rows.map(this::mapRowToFavoriteItem);
+    }
+
+    private SignFavoriteItemDto mapRowToFavoriteItem(SignFavoriteRow r) {
+        return SignFavoriteItemDto.builder()
+                .id(r.id)
+                .localId(nvl(r.localId))
+                .title(nvl(r.title))
+                .videoUrl(nvl(r.videoUrl))
+                .thumbnailUrl(nvl(r.thumbnailUrl))
+                .signDescription(nvl(r.signDescription))
+                .images(splitCsv(r.imagesCsv))
+                .sourceUrl(nvl(r.sourceUrl))
+                .collectionDb(nvl(r.collectionDb))
+                .categoryType(nvl(r.categoryType))
+                .viewCount(r.viewCount)
+                .favoritedAt(r.favoritedAt)
+                .build();
+    }
+
+    private void validateUserId(Long userId) {
+        if (userId == null || userId <= 0) throw new IllegalArgumentException("유효한 사용자 ID가 필요합니다.");
+    }
+
+    // ===== 수집(순차) =====
     @Transactional
     public IngestResultDto ingestAll(int pageSize) {
         int pageNo = 1;
@@ -89,11 +173,10 @@ public class SignService {
         return new IngestResultDto(-1, totalFetched, -1, -1, pageSize);
     }
 
-    // ===== 수집(병렬) : for-loop 워커 + 429/Quota 즉시 종료 + 빈 페이지 연속 종료 =====
-
+    // ===== 수집(병렬) =====
     @Transactional
     public IngestResultDto ingestAllParallel(int pageSize) {
-        final int WORKERS = 1;          // 동시 API 호출 수 (권장 1~2; 높은 값은 429 유발)
+        final int WORKERS = 1;          // 동시 API 호출 수 (429 방지)
         final int STOP_AFTER_EMPTY = 8; // 빈 페이지 연속 N회면 종료
         final int START_PAGE = 1;
 
@@ -115,7 +198,6 @@ public class SignService {
                     SignPageDto page;
 
                     try {
-                        // 429(쿼터 초과) 시 재시도 의미 없으니 retry 0
                         page = fetchPageWithRetry(pageNo, pageSize, 0, 0);
                     } catch (RuntimeException e) {
                         if (isDailyQuotaExceeded(e) || isTooManyRequests(e)) {
@@ -170,7 +252,6 @@ public class SignService {
     }
 
     // ===== 내부 헬퍼 =====
-
     private SignPageDto fetchPage(int pageNo, int pageSize) {
         SignRawResponse raw = client.fetch(null, pageNo, pageSize);
         if (raw == null || raw.getResponse() == null || raw.getResponse().getHeader() == null) {
@@ -192,7 +273,6 @@ public class SignService {
         String pageNoStr    = (body != null) ? body.getPageNo()    : null;
         String numOfRowsStr = (body != null) ? body.getNumOfRows() : null;
 
-        // totalCount는 신뢰하지 않고 실제 개수로 채운다
         return SignPageDto.builder()
                 .items(list)
                 .pageNo(parseIntDefault(pageNoStr, 1))
@@ -212,7 +292,7 @@ public class SignService {
                     throw ex;
                 }
                 long sleep = (long) (baseBackoffMs * Math.pow(1.6, attempt - 1));
-                if (isTooManyRequests(ex)) sleep += 2000L; // 429면 더 쉰다
+                if (isTooManyRequests(ex)) sleep += 2000L;
                 try {
                     Thread.sleep(sleep);
                 } catch (InterruptedException ignored) {
@@ -224,10 +304,9 @@ public class SignService {
     }
 
     private boolean isTransient(Throwable t) {
-        if (t instanceof WebClientRequestException) return true; // 네트워크 이슈
+        if (t instanceof WebClientRequestException) return true;
         if (t instanceof WebClientResponseException wex) {
             int s = wex.getStatusCode().value();
-            // 429, 5xx는 일시 오류로 간주(필요 시 정책 조절)
             return s == 429 || s == 502 || s == 503 || s == 504;
         }
         Throwable c = t.getCause();
@@ -238,34 +317,24 @@ public class SignService {
         }
         return false;
     }
-
     private boolean isTooManyRequests(Throwable t) {
-        if (t instanceof WebClientResponseException wex) {
-            return wex.getStatusCode().value() == 429;
-        }
+        if (t instanceof WebClientResponseException wex) return wex.getStatusCode().value() == 429;
         return false;
     }
-
     private boolean isDailyQuotaExceeded(Throwable t) {
         if (t instanceof WebClientResponseException wex) {
             try {
                 String body = wex.getResponseBodyAsString();
-                if (body != null) {
-                    String lower = body.toLowerCase();
-                    // 예: {"message":"Quota exceeded ! You reach the limit of 1000 requests per 1 days","http_status_code":429}
-                    return lower.contains("quota exceeded");
-                }
-            } catch (Exception ignored) { }
+                if (body != null) return body.toLowerCase().contains("quota exceeded");
+            } catch (Exception ignored) {}
         }
         return false;
     }
-
     private String rootName(Throwable t) {
         Throwable c = t;
         while (c.getCause() != null) c = c.getCause();
         return c.getClass().getSimpleName();
     }
-
     private SignPageDto toPageDto(SignRawResponse raw) {
         var body = raw.getResponse().getBody();
         var itemsRaw = (body != null && body.getItems() != null)
@@ -285,7 +354,6 @@ public class SignService {
                 .totalCount(list.size())
                 .build();
     }
-
     private SignItemDto mapToItemDto(SignRawResponse.Item i) {
         return SignItemDto.builder()
                 .title(nvl(i.getTitle()))
@@ -302,17 +370,14 @@ public class SignService {
     }
 
     private static String nvl(String s) { return (s == null) ? "" : s; }
-
     private static int parseIntDefault(String s, int def) {
         try { return (s == null) ? def : Integer.parseInt(s); }
         catch (NumberFormatException e) { return def; }
     }
-
     private static Integer parseIntOrNull(String s) {
         try { return (s == null) ? null : Integer.parseInt(s); }
         catch (NumberFormatException e) { return null; }
     }
-
     private static List<String> splitCsv(String s) {
         if (s == null || s.isBlank()) return List.of();
         return Arrays.stream(s.split(","))
