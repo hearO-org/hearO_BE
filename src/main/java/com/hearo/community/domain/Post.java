@@ -14,6 +14,15 @@ import java.util.Set;
 @Getter
 @Entity
 @Table(name = "posts")
+@NamedEntityGraphs({
+        @NamedEntityGraph(
+                name = "Post.withAuthorAndImages",
+                attributeNodes = {
+                        @NamedAttributeNode("author"),
+                        @NamedAttributeNode("images")
+                }
+        )
+})
 public class Post extends BaseTimeEntity {
 
     public enum Visibility { PUBLIC, PRIVATE }

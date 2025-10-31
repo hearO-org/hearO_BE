@@ -4,6 +4,7 @@ import com.hearo.community.domain.PostCategory;
 import com.hearo.community.dto.PostCreateReq;
 import com.hearo.community.dto.PostEditReq;
 import com.hearo.community.dto.PostListRes;
+import com.hearo.community.dto.PostDetailRes;
 import com.hearo.community.dto.PostRes;
 import com.hearo.community.service.PostCommandService;
 import com.hearo.community.service.PostQueryService;
@@ -24,7 +25,6 @@ public class PostController {
     private final PostCommandService cmd;
     private final PostQueryService query;
 
-    /** 글 작성 */
     @PostMapping
     public ResponseEntity<ApiResponse<Long>> create(Authentication authentication,
                                                     @RequestBody @Valid PostCreateReq req) {
@@ -32,7 +32,6 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.CREATED, cmd.create(uid, req));
     }
 
-    /** 글 수정 */
     @PutMapping("/{postId}")
     public ResponseEntity<ApiResponse<Void>> edit(Authentication authentication,
                                                   @PathVariable Long postId,
@@ -42,7 +41,6 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.UPDATED);
     }
 
-    /** 글 삭제 (soft delete) */
     @DeleteMapping("/{postId}")
     public ResponseEntity<ApiResponse<Void>> delete(Authentication authentication,
                                                     @PathVariable Long postId) {
@@ -51,13 +49,14 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.DELETED);
     }
 
-    /** 단건 조회 */
+    /** 단건 조회: likeCount(+ liked/scrapped) 포함 */
     @GetMapping("/{postId}")
-    public ResponseEntity<ApiResponse<PostRes>> get(@PathVariable Long postId) {
-        return ApiResponse.success(SuccessStatus.FETCHED, query.get(postId));
+    public ResponseEntity<ApiResponse<PostDetailRes>> get(Authentication authentication,
+                                                          @PathVariable Long postId) {
+        Long uid = optionalUserId(authentication); // 보안 정책상 인증이 필요하면 null이 아니라 값이 들어옴
+        return ApiResponse.success(SuccessStatus.FETCHED, query.getDetail(postId, uid));
     }
 
-    /** 전체 목록 */
     @GetMapping
     public ResponseEntity<ApiResponse<PostListRes>> list(@RequestParam(defaultValue = "0") int page,
                                                          @RequestParam(defaultValue = "10") int size) {
@@ -65,7 +64,6 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 
-    /** 검색 (q=키워드, category=카테고리, tag=태그) */
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<PostListRes>> search(@RequestParam(required = false) String q,
                                                            @RequestParam(required = false) PostCategory category,
@@ -76,10 +74,14 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 
+    /* ===== 공통 유틸 ===== */
     private Long requireUserId(Authentication auth) {
-        if (auth == null || auth.getPrincipal() == null || !(auth.getPrincipal() instanceof Long uid) || uid <= 0) {
+        if (auth == null || !(auth.getPrincipal() instanceof Long uid) || uid <= 0)
             throw new IllegalArgumentException("인증이 필요합니다.");
-        }
         return uid;
+    }
+    private Long optionalUserId(Authentication auth) {
+        if (auth != null && auth.getPrincipal() instanceof Long uid && uid > 0) return uid;
+        return null;
     }
 }

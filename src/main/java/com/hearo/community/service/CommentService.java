@@ -74,10 +74,19 @@ public class CommentService {
     }
 
     public void delete(Long userId, Long commentId) {
-        Comment c = comments.findById(commentId)
+        // 활성 댓글만 삭제 가능(게시물/댓글 둘 중 하나라도 삭제면 예외)
+        var c = comments.findActiveById(commentId)
                 .orElseThrow(() -> new IllegalArgumentException("댓글을 찾을 수 없습니다."));
         if (!c.getAuthor().getId().equals(userId))
             throw new SecurityException("삭제 권한이 없습니다.");
-        c.softDelete();
+
+        if (c.isReply()) {
+            // 대댓글이면 자기 자신만 soft delete
+            c.softDelete();
+        } else {
+            // 부모 댓글이면: 자신의 모든 대댓글 soft delete 후, 부모도 soft delete
+            comments.softDeleteAllByParentId(c.getId());
+            c.softDelete();
+        }
     }
 }
