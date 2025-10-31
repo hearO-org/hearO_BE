@@ -53,24 +53,30 @@ public class PostController {
     @GetMapping("/{postId}")
     public ResponseEntity<ApiResponse<PostDetailRes>> get(Authentication authentication,
                                                           @PathVariable Long postId) {
-        Long uid = optionalUserId(authentication); // 보안 정책상 인증이 필요하면 null이 아니라 값이 들어옴
+        Long uid = optionalUserId(authentication);
         return ApiResponse.success(SuccessStatus.FETCHED, query.getDetail(postId, uid));
     }
 
+    /** 전체 목록: likeCount/liked/scrapped 포함 */
     @GetMapping
-    public ResponseEntity<ApiResponse<PostListRes>> list(@RequestParam(defaultValue = "0") int page,
+    public ResponseEntity<ApiResponse<PostListRes>> list(Authentication authentication,
+                                                         @RequestParam(defaultValue = "0") int page,
                                                          @RequestParam(defaultValue = "10") int size) {
-        Page<PostRes> p = query.list(page, size);
+        Long uid = optionalUserId(authentication);
+        Page<PostRes> p = query.list(page, size, uid);
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 
+    /** 검색: likeCount/liked/scrapped 포함 */
     @GetMapping("/search")
-    public ResponseEntity<ApiResponse<PostListRes>> search(@RequestParam(required = false) String q,
+    public ResponseEntity<ApiResponse<PostListRes>> search(Authentication authentication,
+                                                           @RequestParam(required = false) String q,
                                                            @RequestParam(required = false) PostCategory category,
                                                            @RequestParam(required = false) String tag,
                                                            @RequestParam(defaultValue = "0") int page,
                                                            @RequestParam(defaultValue = "10") int size) {
-        Page<PostRes> p = query.search(q, category, tag, page, size);
+        Long uid = optionalUserId(authentication);
+        Page<PostRes> p = query.search(q, category, tag, page, size, uid);
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 

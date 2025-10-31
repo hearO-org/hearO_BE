@@ -18,7 +18,10 @@ public record PostRes(
         List<String> images,
         Set<String> tags,
         LocalDateTime createdAt,
-        LocalDateTime modifiedAt
+        LocalDateTime modifiedAt,
+        long likeCount,
+        boolean liked,
+        boolean scrapped
 ) {
     public static PostRes of(Post p){
         List<String> imgs = p.getImages().stream().map(i -> i.getUrl()).toList();
@@ -33,7 +36,28 @@ public record PostRes(
                 imgs,
                 p.getTags(),
                 p.getCreatedAt(),
-                p.getModifiedAt()
+                p.getModifiedAt(),
+                0L, false, false
+        );
+    }
+
+    public static PostRes of(Post p, long likeCount, boolean liked, boolean scrapped){
+        List<String> imgs = p.getImages().stream().map(i -> i.getUrl()).toList();
+        return new PostRes(
+                p.getId(),
+                p.getAuthor().getId(),
+                p.getAuthor().getNickname(),
+                p.getTitle(),
+                p.getContent(),
+                p.getCategory(),
+                p.getVisibility().name(),
+                imgs,
+                p.getTags(),
+                p.getCreatedAt(),
+                p.getModifiedAt(),
+                likeCount,
+                liked,
+                scrapped
         );
     }
 }
