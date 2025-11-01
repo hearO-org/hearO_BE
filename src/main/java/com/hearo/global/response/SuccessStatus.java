@@ -14,7 +14,7 @@ public enum SuccessStatus {
     CREATED(HttpStatus.CREATED, "CREATED", "리소스가 생성되었습니다."),
     OK(HttpStatus.OK, "OK", "요청이 성공적으로 처리되었습니다."),
     UPDATED(HttpStatus.OK, "UPDATED", "리소스가 수정되었습니다."),
-    DELETED(HttpStatus.NO_CONTENT, "DELETED", "리소스가 삭제되었습니다."),
+    DELETED(HttpStatus.OK, "DELETED", "리소스가 삭제되었습니다."),
     FETCHED(HttpStatus.OK, "FETCHED", "데이터 조회 성공");
 
     private final HttpStatus status;

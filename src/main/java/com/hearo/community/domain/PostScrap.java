@@ -1,0 +1,26 @@
+package com.hearo.community.domain;
+
+import com.hearo.global.entity.BaseTimeEntity;
+import com.hearo.user.domain.User;
+import jakarta.persistence.*;
+import lombok.Getter;
+
+@Getter
+@Entity
+@Table(name = "post_scraps",
+       uniqueConstraints = @UniqueConstraint(name = "uq_post_scrap_user_post", columnNames = {"user_id","post_id"}))
+public class PostScrap extends BaseTimeEntity {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="user_id", nullable=false)
+    private User user;
+
+    @ManyToOne(fetch=FetchType.LAZY) @JoinColumn(name="post_id", nullable=false)
+    private Post post;
+
+    protected PostScrap() {}
+    private PostScrap(User user, Post post) { this.user = user; this.post = post; }
+
+    public static PostScrap of(User user, Post post) { return new PostScrap(user, post); }
+}
