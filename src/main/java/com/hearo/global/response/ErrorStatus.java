@@ -1,3 +1,4 @@
+// file: com/hearo/global/response/ErrorStatus.java
 package com.hearo.global.response;
 
 import lombok.Getter;
@@ -26,6 +27,7 @@ public enum ErrorStatus {
     RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "RESOURCE_NOT_FOUND", "리소스를 찾을 수 없습니다."),
     ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "ADDRESS_NOT_FOUND", "해당 주소를 찾을 수 없습니다."),
     SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND", "세션을 찾을 수 없습니다."),
+    NOT_FOUND(HttpStatus.NOT_FOUND, "NOT_FOUND", "대상을 찾을 수 없습니다."),
 
     /* 409 CONFLICT */
     DUPLICATE_RESOURCE(HttpStatus.CONFLICT, "DUPLICATE_RESOURCE", "이미 존재하는 리소스입니다."),
@@ -36,7 +38,10 @@ public enum ErrorStatus {
 
     /* 429 TOO_MANY_REQUESTS */
     EXTERNAL_QUOTA(HttpStatus.TOO_MANY_REQUESTS, "EXTERNAL_QUOTA",
-            "외부 KCISA API 일일 호출 제한을 초과했습니다. DB 조회 엔드포인트를 이용해주세요.");
+            "외부 KCISA API 일일 호출 제한을 초과했습니다. DB 조회 엔드포인트를 이용해주세요."),
+
+    /* 구인 정보 API */
+    EXTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "EXTERNAL_ERROR", "외부 API 오류가 발생했습니다.");
 
     private final HttpStatus status;
     private final String code;
@@ -46,5 +51,25 @@ public enum ErrorStatus {
         this.status = status;
         this.code = code;
         this.message = message;
+    }
+
+    public ErrorWithDetail withDetail(String detail) {
+        return new ErrorWithDetail(this, detail);
+    }
+
+    @Getter
+    public static class ErrorWithDetail {
+        private final ErrorStatus base;
+        private final String detail;
+
+        public ErrorWithDetail(ErrorStatus base, String detail) {
+            this.base = base;
+            this.detail = detail;
+        }
+
+        public HttpStatus getStatus() { return base.getStatus(); }
+        public String getCode() { return base.getCode(); }
+        public String getMessage() { return base.getMessage(); }
+        public String getDetail() { return detail; }
     }
 }

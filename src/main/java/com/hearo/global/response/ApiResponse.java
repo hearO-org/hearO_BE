@@ -10,19 +10,10 @@ import org.springframework.http.ResponseEntity;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class ApiResponse<T> {
 
-    /** HTTP status code (e.g., 200, 201, 400 ...) */
     private final int status;
-
-    /** true = success, false = error */
     private final boolean success;
-
-    /** business code like OK, USER_NOT_FOUND ... */
     private final String code;
-
-    /** human readable message */
     private final String message;
-
-    /** payload (nullable on error) */
     private final T data;
 
     /* ---------- Factory: Success ---------- */
@@ -49,7 +40,7 @@ public class ApiResponse<T> {
         );
     }
 
-    /* ---------- Factory: Error (편의용) ---------- */
+    /* ---------- Factory: Error ---------- */
     public static <T> ResponseEntity<ApiResponse<T>> error(ErrorStatus e) {
         return ResponseEntity.status(e.getStatus()).body(
                 ApiResponse.<T>builder()
@@ -59,5 +50,22 @@ public class ApiResponse<T> {
                         .message(e.getMessage())
                         .build()
         );
+    }
+
+    public static <T> ResponseEntity<ApiResponse<T>> error(ErrorStatus.ErrorWithDetail ew) {
+        String combined = combine(ew.getMessage(), ew.getDetail());
+        return ResponseEntity.status(ew.getStatus()).body(
+                ApiResponse.<T>builder()
+                        .status(ew.getStatus().value())
+                        .success(false)
+                        .code(ew.getCode())
+                        .message(combined)
+                        .build()
+        );
+    }
+
+    private static String combine(String base, String detail) {
+        if (detail == null || detail.isBlank()) return base;
+        return base + " - " + detail;
     }
 }
