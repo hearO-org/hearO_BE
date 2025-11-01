@@ -17,17 +17,17 @@ public class JobApiClient {
 
     private final WebClient jobWebClient;
 
-    @Value("${job.api.path}")         // "/B552583/job/job_list_env"
+    @Value("${job.api.path}")
     private String jobPath;
 
-    @Value("${job.api.service-key}")  // ★ data.go.kr '인코딩(Encoding)' 키를 그대로 주입 (%2F, %3D 등 포함)
+    @Value("${job.api.service-key}")
     private String encodedServiceKey;
 
     public JobRawResponse fetch(int pageNo, int numOfRows) {
         // 1) XML을 문자열로 먼저 받기 (코덱 문제 회피)
         String xml = jobWebClient.get()
                 .uri(b -> b.path(jobPath)
-                        .queryParam("serviceKey", encodedServiceKey)             // 재인코딩 금지 (Config에서 NONE)
+                        .queryParam("serviceKey", encodedServiceKey)
                         .queryParam("pageNo", Integer.toString(pageNo))
                         .queryParam("numOfRows", Integer.toString(numOfRows))
                         .build())
