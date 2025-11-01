@@ -10,6 +10,7 @@ import com.hearo.job.service.JobService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 
 import java.util.Map;
@@ -37,13 +38,26 @@ public class JobController {
     ) {
         int p = (pageNo != null) ? pageNo : (legacyPage != null ? legacyPage : 1);
         int s = (numOfRows != null) ? numOfRows : (legacySize != null ? legacySize : 100);
+        if (p < 1) p = 1;
+        if (s < 1) s = 10;
+
         try {
             var data = service.externalList(p, s);
             return ApiResponse.success(SuccessStatus.FETCHED, data);
+
         } catch (WebClientResponseException e) {
-            if (e.getStatusCode().value() == 429) return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
-            throw e;
+            // 외부 응답 오류
+            if (e.getStatusCode().value() == 429) {
+                return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
+            }
+            return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail(e.getMessage()));
+
+        } catch (WebClientRequestException e) {
+            // 네트워크/타임아웃 등 요청 예외
+            return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail("네트워크 오류"));
+
         } catch (IllegalStateException e) {
+            // 파싱 실패/빈 응답 등 내부 처리 중 오류
             return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail(e.getMessage()));
         }
     }
@@ -55,12 +69,22 @@ public class JobController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
+        if (page < 1) page = 1;
+        if (size < 1) size = 10;
+
         try {
             var data = service.externalFiltered(filter, page, size);
             return ApiResponse.success(SuccessStatus.FETCHED, data);
+
         } catch (WebClientResponseException e) {
-            if (e.getStatusCode().value() == 429) return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
-            throw e;
+            if (e.getStatusCode().value() == 429) {
+                return ApiResponse.error(ErrorStatus.EXTERNAL_QUOTA);
+            }
+            return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail(e.getMessage()));
+
+        } catch (WebClientRequestException e) {
+            return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail("네트워크 오류"));
+
         } catch (IllegalStateException | IllegalArgumentException e) {
             return ApiResponse.error(ErrorStatus.EXTERNAL_ERROR.withDetail(e.getMessage()));
         }
@@ -73,6 +97,7 @@ public class JobController {
             var dto = service.getDetailByRno(rno);
             return ApiResponse.success(SuccessStatus.FETCHED, dto);
         } catch (IllegalArgumentException e) {
+            // rno 미발견
             return ApiResponse.error(ErrorStatus.NOT_FOUND.withDetail(e.getMessage()));
         }
     }
@@ -82,7 +107,9 @@ public class JobController {
     public ResponseEntity<ApiResponse<Map<String, Object>>> facets(
             @RequestParam(defaultValue = "100") int numOfRows
     ) {
+        if (numOfRows < 1) numOfRows = 50;
         var page = service.externalList(1, numOfRows);
+
         Set<String> empTypes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> salaryTypes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
         Set<String> enterTypes = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
