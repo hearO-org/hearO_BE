@@ -38,6 +38,34 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+	// jwt
+	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5'
+
+	// WebClient + Reactor Netty
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+	implementation 'io.projectreactor.netty:reactor-netty'
+
+	// xml -> json
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.fasterxml.jackson.dataformat:jackson-dataformat-xml'
+
+	//swagger
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+
+	// api 호출 재시도/서킷/레이트리밋
+	implementation "io.github.resilience4j:resilience4j-spring-boot3:2.2.0"
+
+	implementation 'org.springframework.boot:spring-boot-starter-jdbc'
+
+	// 카페인 캐시
+	implementation 'com.github.ben-manes.caffeine:caffeine:3.1.8'
+	implementation 'org.springframework.boot:spring-boot-starter-cache'
+
+	// WebClient + XML 코덱들이 들어있는 WebFlux 스타터 (필수)
+	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 }
 
 tasks.named('test') {
