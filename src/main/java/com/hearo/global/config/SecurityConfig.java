@@ -1,4 +1,4 @@
-package com.hearo.global;
+package com.hearo.global.config;
 
 import com.hearo.auth.handler.CustomOAuth2UserService;
 import com.hearo.auth.handler.OAuth2FailureHandler;
@@ -33,7 +33,7 @@ public class SecurityConfig {
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(f -> f.disable())
                 .httpBasic(b -> b.disable())
-                .oauth2Login(o -> o.disable()) // ★ 핵심: API 영역에서는 OAuth2 비활성화(리다이렉트 절대 금지)
+                .oauth2Login(o -> o.disable()) // API 영역에서는 OAuth2 비활성화(리다이렉트 절대 금지)
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
