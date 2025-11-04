@@ -8,16 +8,10 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.annotation.Order;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.cors.CorsConfiguration;
-import org.springframework.web.cors.CorsConfigurationSource;
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.List;
 
 @Configuration
 @RequiredArgsConstructor
@@ -28,18 +22,15 @@ public class SecurityConfig {
     private final OAuth2SuccessHandler successHandler;
     private final OAuth2FailureHandler failureHandler;
 
-    /** 1) API 체인: /api/** 전용 (JWT만, 리다이렉트 금지) */
     @Bean
-    @Order(1)
-    SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/api/**")
-                .csrf(csrf -> csrf.disable())
-                .cors(cors -> cors.configurationSource(corsSource()))
+                .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .formLogin(form -> form.disable())
-                .httpBasic(basic -> basic.disable())
-                .oauth2Login(oauth -> oauth.disable()) // ★ API에서는 OAuth2 리다이렉트 금지
+                .formLogin(f -> f.disable())
+                .httpBasic(b -> b.disable())
+                .logout(l -> l.disable())
+
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -47,49 +38,23 @@ public class SecurityConfig {
                             res.getWriter().write("{\"error\":\"unauthorized\"}");
                         })
                 )
+
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
-                                "/api/v1/auth/**",            // 일반 회원가입/로그인/리프레시 등은 공개
-                                "/actuator/health",
+                                "/api/v1/auth/**", "/actuator/health",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html"
                         ).permitAll()
-                        .anyRequest().authenticated()
-                );
-
-        http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
-        return http.build();
-    }
-
-    /** 2) Web 체인: 나머지 경로 (브라우저용 카카오 OAuth2 유지) */
-    @Bean
-    @Order(2)
-    SecurityFilterChain webChain(HttpSecurity http) throws Exception {
-        http
-                .csrf(csrf -> csrf.disable())
-                .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
+                        .requestMatchers("/oauth2/**", "/login/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                .oauth2Login(oauth -> oauth
+
+                .oauth2Login(o -> o
                         .userInfoEndpoint(u -> u.userService(oAuth2UserService))
                         .successHandler(successHandler)
                         .failureHandler(failureHandler)
                 );
-        return http.build();
-    }
 
-    /** CORS (Postman/웹 프론트에서 호출 시 편의) */
-    @Bean
-    CorsConfigurationSource corsSource() {
-        CorsConfiguration c = new CorsConfiguration();
-        c.setAllowedOrigins(List.of("*"));            // 필요 시 도메인으로 제한
-        c.setAllowedMethods(List.of("GET","POST","PUT","PATCH","DELETE","OPTIONS"));
-        c.setAllowedHeaders(List.of("*"));
-        c.setExposedHeaders(List.of("Authorization","Location"));
-        c.setAllowCredentials(false);
-        UrlBasedCorsConfigurationSource src = new UrlBasedCorsConfigurationSource();
-        src.registerCorsConfiguration("/**", c);
-        return src;
+        http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
+        return http.build();
     }
 }
