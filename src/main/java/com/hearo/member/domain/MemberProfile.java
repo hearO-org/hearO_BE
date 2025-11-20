@@ -70,14 +70,34 @@ public class MemberProfile extends BaseTimeEntity {
     /* ===== 수정 메서드 (향후 프로필 수정 API용) ===== */
 
     public void update(String nickname, Gender gender, LocalDate birthday, List<InterestKeyword> keywords) {
+
+        // 닉네임 변경 (null 또는 blank면 무시)
         if (nickname != null && !nickname.isBlank()) {
             this.nickname = nickname;
         }
-        this.gender = gender;
-        this.birthday = birthday;
-        this.interestKeywords.clear();
-        if (keywords != null && !keywords.isEmpty()) {
-            this.interestKeywords.addAll(keywords);
+
+        // 성별 변경 (null이면 기존 값 유지)
+        if (gender != null) {
+            this.gender = gender;
+        }
+
+        // 생일 변경 (null이면 기존 값 유지)
+        if (birthday != null) {
+            this.birthday = birthday;
+        }
+
+        /**
+         * 관심 키워드 업데이트 정책
+         * - keywords == null   → 아무 변경도 하지 않고 기존 값 유지
+         * - keywords == []     → clear() 실행 → 관심 키워드 전체 삭제(초기화)
+         * - keywords.size > 0  → 기존 clear() 후 전달한 리스트로 교체
+         */
+        if (keywords != null) { // null이면 기존 값 유지
+            this.interestKeywords.clear();
+            if (!keywords.isEmpty()) {
+                this.interestKeywords.addAll(keywords);
+            }
         }
     }
+
 }
