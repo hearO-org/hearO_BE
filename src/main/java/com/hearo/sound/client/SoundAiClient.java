@@ -3,6 +3,7 @@ package com.hearo.sound.client;
 import com.hearo.sound.config.SoundAiConfig;
 import com.hearo.sound.dto.AiInferResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -12,6 +13,7 @@ import reactor.core.publisher.Mono;
 
 import java.time.Duration;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class SoundAiClient {
@@ -35,8 +37,7 @@ public class SoundAiClient {
                 .bodyToMono(AiInferResponse.class)
                 .timeout(Duration.ofMillis(config.getTimeoutMs()))
                 .onErrorResume(ex -> {
-                    // TODO: 로거로 교체
-                    ex.printStackTrace();
+                    log.error("[SoundAI] AI 서버 호출 실패: {}", ex.getMessage(), ex);
                     return Mono.empty();
                 })
                 .block();

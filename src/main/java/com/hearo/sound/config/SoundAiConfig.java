@@ -13,7 +13,7 @@ import org.springframework.web.reactive.function.client.WebClient;
 @ConfigurationProperties(prefix = "sound.ai")
 public class SoundAiConfig {
 
-    private String baseUrl; // http://3.27.0.219
+    private String baseUrl;
 
     private String inferPath = "/infer";
 

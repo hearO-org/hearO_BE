@@ -55,7 +55,7 @@ public class SoundService {
 
     // 어떤 소리에 알림을 줄지 정책 정의
     private boolean isDangerousLabel(String label) {
-        // 예시: "siren", "car_horn"은 위험으로 간주
+        // 현재 "siren", "car_horn"은 위험으로 간주
         return "siren".equalsIgnoreCase(label)
                 || "car_horn".equalsIgnoreCase(label);
     }
