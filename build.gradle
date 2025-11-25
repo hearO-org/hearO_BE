@@ -66,6 +66,9 @@ dependencies {
 
 	// WebClient + XML 코덱들이 들어있는 WebFlux 스타터 (필수)
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
+
+	// FCM 알림
+	implementation 'com.google.firebase:firebase-admin:9.3.0'
 }
 
 tasks.named('test') {
