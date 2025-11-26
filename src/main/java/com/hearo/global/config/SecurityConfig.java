@@ -23,17 +23,22 @@ public class SecurityConfig {
     private final OAuth2SuccessHandler successHandler;
     private final OAuth2FailureHandler failureHandler;
 
-    /** 1) API 전용 체인: /api/** 에서는 OAuth2 리다이렉트 금지 + 미인증은 401 JSON */
+    /**
+     * 1) /api/** 전용 체인
+     *    - JWT 기반
+     *    - OAuth2 리다이렉트 사용 안 함
+     */
     @Bean
     @Order(1)
     SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
         http
+                // 🔹 /api/** 만 이 체인에 매칭
                 .securityMatcher("/api/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(f -> f.disable())
                 .httpBasic(b -> b.disable())
-                .oauth2Login(o -> o.disable()) // API 영역에서는 OAuth2 비활성화(리다이렉트 절대 금지)
+                .oauth2Login(o -> o.disable())   // API 쪽에서는 카카오 로그인 완전 비활성화
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -45,7 +50,9 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/actuator/health"
+                                "/actuator/health",
+                                // 🔓 테스트 위해 잠깐 열어둔 엔드포인트
+                                "/api/v1/sound/detect"
                         ).permitAll()
                         .anyRequest().authenticated()
                 );
@@ -54,11 +61,16 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 2) 웹 전용 체인: 나머지 경로에서만 카카오 OAuth2 허용 */
+    /**
+     * 2) 그 밖의 모든 경로(웹) 전용 체인
+     *    - 여기서만 카카오 OAuth2 로그인 사용
+     */
     @Bean
     @Order(2)
     SecurityFilterChain webChain(HttpSecurity http) throws Exception {
         http
+                // 🔹 /api/** 가 아닌 나머지에만 적용
+                .securityMatcher(request -> !request.getServletPath().startsWith("/api/"))
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth

@@ -30,6 +30,9 @@ public class SoundController {
             @RequestPart("file") MultipartFile file
     ) throws Exception {
 
+        System.out.println("=== [SoundController] /api/v1/sound/detect 진입 ==="); // api 작동 확인용 출력
+
+
         if (file.isEmpty()) {
             // 400 에러 공통 처리 타도록 예외 던지기
             throw new ApiException(
