@@ -24,7 +24,11 @@ public class SoundController {
      * 모바일 앱이 1~2초짜리 wav 조각을 올려서
      * 위험 소리인지 확인하는 엔드포인트.
      */
-    @PostMapping("/detect")
+    @PostMapping(
+            value = "/detect",
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE, //이 API는 multipart/form-data 로만 받음 그 외 다른 타입은 415 에러 반환
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
     public ResponseEntity<ApiResponse<DetectSoundResponse>> detect(
             Authentication auth,
             @RequestPart("file") MultipartFile file
