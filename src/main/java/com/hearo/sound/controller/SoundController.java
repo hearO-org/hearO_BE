@@ -24,24 +24,21 @@ public class SoundController {
      * 모바일 앱이 1~2초짜리 wav 조각을 올려서
      * 위험 소리인지 확인하는 엔드포인트.
      */
-    @PostMapping(value = "/detect", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping("/detect")
     public ResponseEntity<ApiResponse<DetectSoundResponse>> detect(
             Authentication auth,
             @RequestPart("file") MultipartFile file
     ) throws Exception {
 
-        System.out.println("=== [SoundController] /api/v1/sound/detect 진입 ==="); // api 작동 확인용 출력
+        System.out.println("=== [SoundController] /api/v1/sound/detect 진입 ===");
 
-
-        if (file.isEmpty()) {
-            // 400 에러 공통 처리 타도록 예외 던지기
+        if (file == null || file.isEmpty()) {
             throw new ApiException(
                     ErrorStatus.INVALID_INPUT,
                     "업로드된 오디오 파일이 비어 있습니다."
             );
         }
 
-        // 간단한 MIME 체크
         String contentType = file.getContentType();
         if (contentType == null || !contentType.startsWith("audio/")) {
             throw new ApiException(
@@ -50,9 +47,12 @@ public class SoundController {
             );
         }
 
-        Long userId = (Long) auth.getPrincipal(); // JwtAuthFilter에서 userId를 principal로 넣고 있음
-        byte[] bytes = file.getBytes();
+        Long userId = null;
+        if (auth != null && auth.getPrincipal() instanceof Long id) {
+            userId = id;
+        }
 
+        byte[] bytes = file.getBytes();
         DetectSoundResponse result = soundService.detect(bytes, file.getOriginalFilename(), userId);
         return ApiResponse.success(SuccessStatus.OK, result);
     }

@@ -23,22 +23,17 @@ public class SecurityConfig {
     private final OAuth2SuccessHandler successHandler;
     private final OAuth2FailureHandler failureHandler;
 
-    /**
-     * 1) /api/** 전용 체인
-     *    - JWT 기반
-     *    - OAuth2 리다이렉트 사용 안 함
-     */
+    /** 1) /api/** 전용 체인 (JWT, OAuth2 X) */
     @Bean
-    @Order(1)
+    @Order(0)
     SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
         http
-                // 🔹 /api/** 만 이 체인에 매칭
-                .securityMatcher("/api/**")
+                .securityMatcher("/api/**")   // 오직 /api/** 만
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(f -> f.disable())
                 .httpBasic(b -> b.disable())
-                .oauth2Login(o -> o.disable())   // API 쪽에서는 카카오 로그인 완전 비활성화
+                .oauth2Login(o -> o.disable())   // 여기서는 카카오 로그인 절대 X
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -50,9 +45,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/**",
                                 "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/actuator/health",
-                                // 🔓 테스트 위해 잠깐 열어둔 엔드포인트
-                                "/api/v1/sound/detect"
+                                "/actuator/health"
                         ).permitAll()
                         .anyRequest().authenticated()
                 );
@@ -61,16 +54,13 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /**
-     * 2) 그 밖의 모든 경로(웹) 전용 체인
-     *    - 여기서만 카카오 OAuth2 로그인 사용
-     */
+    /** 2) 로그인 관련 엔드포인트만 카카오 OAuth2 사용 */
     @Bean
-    @Order(2)
+    @Order(1)
     SecurityFilterChain webChain(HttpSecurity http) throws Exception {
         http
-                // 🔹 /api/** 가 아닌 나머지에만 적용
-                .securityMatcher(request -> !request.getServletPath().startsWith("/api/"))
+                // 딱 이 3가지만: /, /login/**, /oauth2/**
+                .securityMatcher("/", "/login/**", "/oauth2/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
