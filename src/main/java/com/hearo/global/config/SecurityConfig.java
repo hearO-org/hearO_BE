@@ -28,12 +28,13 @@ public class SecurityConfig {
     @Order(0)
     SecurityFilterChain apiChain(HttpSecurity http) throws Exception {
         http
-                .securityMatcher("/api/**")   // 오직 /api/** 만
+                // 오직 /api/** 만 처리
+                .securityMatcher("/api/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .formLogin(f -> f.disable())
                 .httpBasic(b -> b.disable())
-                .oauth2Login(o -> o.disable())   // 여기서는 카카오 로그인 절대 X
+                .oauth2Login(o -> o.disable())   // API에서는 OAuth2 로그인 절대 X
                 .exceptionHandling(e -> e
                         .authenticationEntryPoint((req, res, ex) -> {
                             res.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
@@ -42,11 +43,8 @@ public class SecurityConfig {
                         })
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/api/v1/auth/**",
-                                "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html",
-                                "/actuator/health"
-                        ).permitAll()
+                        // 인증 없이 열어줄 API만 여기에서 허용
+                        .requestMatchers("/api/v1/auth/**").permitAll()
                         .anyRequest().authenticated()
                 );
 
@@ -54,17 +52,19 @@ public class SecurityConfig {
         return http.build();
     }
 
-    /** 2) 로그인 관련 엔드포인트만 카카오 OAuth2 사용 */
+    /** 2) 나머지 전체(/**)를 처리하는 웹/OAuth2 체인 (fallback 역할) */
     @Bean
     @Order(1)
     SecurityFilterChain webChain(HttpSecurity http) throws Exception {
         http
-                // 딱 이 3가지만: /, /login/**, /oauth2/**
-                .securityMatcher("/", "/login/**", "/oauth2/**")
+                // /api/** 를 제외한 나머지 모든 경로 처리
+                .securityMatcher("/**")
                 .csrf(c -> c.disable())
                 .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // 누구나 접근 가능
                         .requestMatchers("/", "/login/**", "/oauth2/**").permitAll()
+                        // 그 외는 전부 인증 필요
                         .anyRequest().authenticated()
                 )
                 .oauth2Login(o -> o
