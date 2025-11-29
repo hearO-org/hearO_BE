@@ -53,19 +53,13 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String access  = jwt.createAccess(u.getId(), u.getTokenVersion(), List.of("ROLE_USER"));
         String refresh = jwt.createRefresh(u.getId(), u.getTokenVersion(), jti);
 
-        // 개발/디버깅용: JSON 응답
         if (shouldReturnJson(req)) {
             writeJson(res, access, refresh);
         } else {
-            // 모바일 딥링크 리다이렉트
-            // 레거시: token=<ACCESS>
-            // 신규: access=<ACCESS>&refresh=<REFRESH>&tokenType=Bearer&expiresIn=...
+            // hearo://login?token=<ACCESS>&refresh=<REFRESH>&tokenType=Bearer&expiresIn=...
             String redirect = UriComponentsBuilder.fromUriString(authProps.getSuccessRedirect())
-                    // 기존 클라이언트 호환용
-                    .queryParam("token", access)
-                    // 신규 클라이언트용
-                    .queryParam("access", access)
-                    .queryParam("refresh", refresh)
+                    .queryParam("token", access)         // token = access JWT
+                    .queryParam("refresh", refresh)      // 세션 연장을 위한 refresh JWT
                     .queryParam("tokenType", "Bearer")
                     .queryParam("expiresIn", jwt.accessTtlSeconds())
                     .build()
@@ -76,11 +70,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         }
     }
 
-    /**
-     * JSON 응답으로 강제 전환하는 조건:
-     * 1) URL 쿼리파라미터: ?debugJson=true
-     *    - 모바일 / 웹 공통으로, 디버깅 시에만 사용
-     */
+    // 디버깅용: ?debugJson=true 붙이면 JSON으로 토큰 확인 가능
     private boolean shouldReturnJson(HttpServletRequest req) {
         String q = req.getParameter("debugJson");
         return "true".equalsIgnoreCase(q);
