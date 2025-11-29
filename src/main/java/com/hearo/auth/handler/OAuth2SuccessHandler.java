@@ -58,9 +58,16 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
             writeJson(res, access, refresh);
         } else {
             // 모바일 딥링크 리다이렉트
-            // hearo://login?token=<ACCESS_JWT>
+            // 레거시: token=<ACCESS>
+            // 신규: access=<ACCESS>&refresh=<REFRESH>&tokenType=Bearer&expiresIn=...
             String redirect = UriComponentsBuilder.fromUriString(authProps.getSuccessRedirect())
-                    .queryParam("token", access)          // 프론트 요청: token=JWT토큰값
+                    // 기존 클라이언트 호환용
+                    .queryParam("token", access)
+                    // 신규 클라이언트용
+                    .queryParam("access", access)
+                    .queryParam("refresh", refresh)
+                    .queryParam("tokenType", "Bearer")
+                    .queryParam("expiresIn", jwt.accessTtlSeconds())
                     .build()
                     .encode()
                     .toUriString();
@@ -72,8 +79,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     /**
      * JSON 응답으로 강제 전환하는 조건:
      * 1) URL 쿼리파라미터: ?debugJson=true
-     * 2) 환경변수: APP_OAUTH2_SUCCESS_RESPONSE=json
-     * 3) JVM 옵션: -Dapp.oauth2.success-response=json
+     *    - 모바일 / 웹 공통으로, 디버깅 시에만 사용
      */
     private boolean shouldReturnJson(HttpServletRequest req) {
         String q = req.getParameter("debugJson");
