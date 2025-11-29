@@ -76,17 +76,8 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
      * 3) JVM 옵션: -Dapp.oauth2.success-response=json
      */
     private boolean shouldReturnJson(HttpServletRequest req) {
-        // 1) 쿼리 파라미터
         String q = req.getParameter("debugJson");
-        if ("true".equalsIgnoreCase(q)) return true;
-
-        // 2) 환경변수
-        String envVal = System.getenv("APP_OAUTH2_SUCCESS_RESPONSE");
-        if ("json".equalsIgnoreCase(envVal)) return true;
-
-        // 3) JVM 시스템 프로퍼티
-        String sysVal = System.getProperty("app.oauth2.success-response");
-        return "json".equalsIgnoreCase(sysVal);
+        return "true".equalsIgnoreCase(q);
     }
 
     private void writeJson(HttpServletResponse res, String access, String refresh) throws IOException {
