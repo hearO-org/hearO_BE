@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hearo.auth.domain.RefreshToken;
 import com.hearo.auth.repository.RefreshTokenRepository;
 import com.hearo.global.jwt.JwtProvider;
+import com.hearo.global.props.HearoAuthProps;
 import com.hearo.user.domain.User;
 import com.hearo.user.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
@@ -28,10 +29,8 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
     private final UserRepository users;
     private final RefreshTokenRepository refreshTokens;
     private final JwtProvider jwt;
+    private final HearoAuthProps authProps;
     private final ObjectMapper om = new ObjectMapper();
-
-    // 프론트랑 나중에 경로 맞춰야 돼
-    private static final String MOBILE_REDIRECT = "hearo://auth/callback";
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest req, HttpServletResponse res, Authentication auth)
@@ -54,15 +53,18 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String access  = jwt.createAccess(u.getId(), u.getTokenVersion(), List.of("ROLE_USER"));
         String refresh = jwt.createRefresh(u.getId(), u.getTokenVersion(), jti);
 
+        // 개발/디버깅용: JSON 응답
         if (shouldReturnJson(req)) {
             writeJson(res, access, refresh);
         } else {
-            String redirect = UriComponentsBuilder.fromUriString(MOBILE_REDIRECT)
-                    .queryParam("access", access)
-                    .queryParam("refresh", refresh)
+            // 모바일 딥링크 리다이렉트
+            // hearo://login?token=<ACCESS_JWT>
+            String redirect = UriComponentsBuilder.fromUriString(authProps.getSuccessRedirect())
+                    .queryParam("token", access)          // 프론트 요청: token=JWT토큰값
                     .build()
                     .encode()
                     .toUriString();
+
             getRedirectStrategy().sendRedirect(req, res, redirect);
         }
     }
@@ -72,7 +74,6 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
      * 1) URL 쿼리파라미터: ?debugJson=true
      * 2) 환경변수: APP_OAUTH2_SUCCESS_RESPONSE=json
      * 3) JVM 옵션: -Dapp.oauth2.success-response=json
-     * 개발시에는 json 형식으로 응답, 운영시에는 저 위에 있는 경로로 응답 전달할 거
      */
     private boolean shouldReturnJson(HttpServletRequest req) {
         // 1) 쿼리 파라미터
