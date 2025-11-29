@@ -53,12 +53,17 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         String access  = jwt.createAccess(u.getId(), u.getTokenVersion(), List.of("ROLE_USER"));
         String refresh = jwt.createRefresh(u.getId(), u.getTokenVersion(), jti);
 
+        // 개발/디버깅용: JSON 응답
         if (shouldReturnJson(req)) {
             writeJson(res, access, refresh);
         } else {
             // 모바일 딥링크 리다이렉트
-            // hearo://login?access=<ACCESS>&refresh=<REFRESH>&tokenType=Bearer&expiresIn=...
+            // 레거시: token=<ACCESS>
+            // 신규: access=<ACCESS>&refresh=<REFRESH>&tokenType=Bearer&expiresIn=...
             String redirect = UriComponentsBuilder.fromUriString(authProps.getSuccessRedirect())
+                    // 기존 클라이언트 호환용
+                    .queryParam("token", access)
+                    // 신규 클라이언트용
                     .queryParam("access", access)
                     .queryParam("refresh", refresh)
                     .queryParam("tokenType", "Bearer")
