@@ -5,9 +5,12 @@ import com.hearo.global.response.ApiResponse;
 import com.hearo.global.response.ErrorStatus;
 import com.hearo.global.response.SuccessStatus;
 import com.hearo.sound.dto.DetectSoundResponse;
+import com.hearo.sound.dto.SoundDetectLogRes;
 import com.hearo.sound.service.SoundService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -39,9 +42,11 @@ public class SoundController {
             @RequestPart("file") MultipartFile file
     ) {
 
-        Long userId = null;
-        if (auth != null && auth.getPrincipal() instanceof Long id) {
-            userId = id;
+        if (auth == null || !(auth.getPrincipal() instanceof Long userId)) {
+            throw new ApiException(
+                    ErrorStatus.UNAUTHORIZED,
+                    "인증 정보가 없습니다."
+            );
         }
 
         log.info("[SoundController] /api/v1/sound/detect called userId={}, size={}, contentType={}",
@@ -95,5 +100,26 @@ public class SoundController {
                     "소리 분석 중 오류가 발생했습니다."
             );
         }
+    }
+
+    /**
+     * 내 소리 분석 기록 조회
+     * GET /api/v1/sound/logs/me
+     */
+    @GetMapping("/logs/me")
+    public ResponseEntity<ApiResponse<Page<SoundDetectLogRes>>> getMySoundLogs(
+            Authentication auth,
+            Pageable pageable
+    ) {
+        if (auth == null || !(auth.getPrincipal() instanceof Long userId)) {
+            throw new ApiException(
+                    ErrorStatus.UNAUTHORIZED,
+                    "인증 정보가 없습니다."
+            );
+        }
+
+        Page<SoundDetectLogRes> page = soundService.getMySoundLogs(userId, pageable);
+
+        return ApiResponse.success(SuccessStatus.OK, page);
     }
 }
