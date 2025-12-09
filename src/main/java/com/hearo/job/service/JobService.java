@@ -63,7 +63,7 @@ public class JobService {
             JobRawResponse raw = fetchWithRetry(pageNo, fetchRows, 4, 400);
             validateHeader(raw);
 
-            // ✅ 항상 null-safe: item 리스트가 null이어도 빈 리스트로 처리
+            // 항상 null-safe: item 리스트가 null이어도 빈 리스트로 처리
             List<JobRawResponse.Item> items = safeItems(raw);
             if (items.isEmpty()) break;
 
@@ -104,7 +104,7 @@ public class JobService {
             JobRawResponse raw = fetchWithRetry(pageNo, defaultFetchRows, 3, 300);
             validateHeader(raw);
 
-            // ✅ null-safe
+            // null-safe
             List<JobRawResponse.Item> items = safeItems(raw);
             if (items.isEmpty()) break;
 
@@ -156,7 +156,7 @@ public class JobService {
     }
 
     /**
-     * ✅ 공통 null-safe item 리스트 추출
+     * 공통 null-safe item 리스트 추출
      * - body == null → 빈 리스트
      * - body.items == null → 빈 리스트
      * - body.items.item == null → 빈 리스트
