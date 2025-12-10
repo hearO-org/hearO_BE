@@ -16,25 +16,18 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
 
     /**
      * 단건 조회
-     * - images만 fetch join
-     * - tags는 @ElementCollection 이라 LAZY로 별도 쿼리로 로딩 (트랜잭션 안이므로 안전)
-     * - 기존: {"images", "tags"} → 카티션 곱으로 인해 이미지 중복 생김
      */
     @EntityGraph(attributePaths = {"images"})
     Optional<Post> findByIdAndDeletedFalse(Long id);
 
     /**
      * 전체 목록 조회
-     * - images만 fetch
-     * - tags는 lazy 로딩
      */
     @EntityGraph(attributePaths = {"images"})
     Page<Post> findAllByDeletedFalse(Pageable pageable);
 
     /**
      * 특정 사용자가 작성한 게시글 목록
-     * - images만 fetch
-     * - tags는 lazy 로딩
      */
     @EntityGraph(attributePaths = {"images"})
     Page<Post> findByAuthor_IdAndDeletedFalse(Long authorId, Pageable pageable);
