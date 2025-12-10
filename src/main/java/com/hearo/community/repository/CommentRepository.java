@@ -38,4 +38,8 @@ public interface CommentRepository extends JpaRepository<Comment, Long> {
     @Modifying
     @Query("update Comment c set c.deleted = true where c.parent.id = :parentId and c.deleted = false")
     int softDeleteAllByParentId(@Param("parentId") Long parentId);
+
+    /** 특정 사용자가 작성한 댓글 목록 (최신 순) */
+    @EntityGraph(attributePaths = {"author"})
+    Page<Comment> findByAuthor_IdAndDeletedFalse(Long authorId, Pageable pageable);
 }

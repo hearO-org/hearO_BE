@@ -67,6 +67,16 @@ public class PostController {
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 
+    /** 내가 작성한 게시물 목록: likeCount/liked/scrapped 포함 */
+    @GetMapping("/me")
+    public ResponseEntity<ApiResponse<PostListRes>> myPosts(Authentication authentication,
+                                                            @RequestParam(defaultValue = "0") int page,
+                                                            @RequestParam(defaultValue = "10") int size) {
+        Long uid = requireUserId(authentication);
+        Page<PostRes> p = query.listMyPosts(uid, page, size);
+        return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
+    }
+
     /** 검색: likeCount/liked/scrapped 포함 */
     @GetMapping("/search")
     public ResponseEntity<ApiResponse<PostListRes>> search(Authentication authentication,

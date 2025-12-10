@@ -21,6 +21,10 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
     @EntityGraph(attributePaths = {"images", "tags"})
     Page<Post> findAllByDeletedFalse(Pageable pageable);
 
+    /** 특정 사용자가 작성한 게시물 목록 */
+    @EntityGraph(attributePaths = {"images", "tags"})
+    Page<Post> findByAuthor_IdAndDeletedFalse(Long authorId, Pageable pageable);
+
     boolean existsByIdAndAuthor_Id(Long postId, Long authorId);
 
     long countByCategoryAndDeletedFalse(PostCategory category);
@@ -41,4 +45,21 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
             where s.user.id = :uid and p.deleted = false
             """)
     Page<Post> findScrappedPosts(@Param("uid") Long userId, Pageable pageable);
+
+    // 내가 좋아요한 게시물 목록 (좋아요한 시각 최신순)
+    @EntityGraph(attributePaths = {"images"})
+    @Query(value = """
+            select p
+            from PostLike l
+            join l.post p
+            where l.user.id = :uid and p.deleted = false
+            order by l.createdAt desc
+            """,
+            countQuery = """
+            select count(l)
+            from PostLike l
+            join l.post p
+            where l.user.id = :uid and p.deleted = false
+            """)
+    Page<Post> findLikedPosts(@Param("uid") Long userId, Pageable pageable);
 }

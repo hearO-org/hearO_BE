@@ -1,16 +1,17 @@
 package com.hearo.community.service;
 
 import com.hearo.community.domain.*;
+import com.hearo.community.dto.PostRes;
 import com.hearo.community.dto.ReactionRes;
 import com.hearo.community.repository.*;
 import com.hearo.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
 
 @Service
 @RequiredArgsConstructor
@@ -105,8 +106,56 @@ public class ReactionService {
     }
 
     /** 내 스크랩 목록 (스크랩한 시각 최신순) */
-    public Page<com.hearo.community.dto.PostRes> listMyScraps(Long userId, int page, int size) {
+    @Transactional(readOnly = true)
+    public Page<PostRes> listMyScraps(Long userId, int page, int size) {
         Pageable pageable = PageRequest.of(page, size);
-        return posts.findScrappedPosts(userId, pageable).map(com.hearo.community.dto.PostRes::of);
+        Page<Post> p = posts.findScrappedPosts(userId, pageable);
+        return attachReactions(p, userId);
+    }
+
+    /** 내가 좋아요한 게시물 목록 (좋아요한 시각 최신순) */
+    @Transactional(readOnly = true)
+    public Page<PostRes> listMyLikedPosts(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<Post> p = posts.findLikedPosts(userId, pageable);
+        return attachReactions(p, userId);
+    }
+
+    /** 좋아요/스크랩 플래그 + likeCount 붙여주는 공통 로직 */
+    private Page<PostRes> attachReactions(Page<Post> page, Long userId) {
+        var content = page.getContent();
+        if (content.isEmpty()) {
+            return new PageImpl<>(Collections.emptyList(), page.getPageable(), page.getTotalElements());
+        }
+
+        var ids = content.stream().map(Post::getId).toList();
+
+        // 좋아요 수 집계
+        Map<Long, Long> likeCountMap = new HashMap<>();
+        for (Object[] r : postLikes.countByPostIds(ids)) {
+            likeCountMap.put((Long) r[0], (Long) r[1]); // r[0]=postId, r[1]=count
+        }
+
+        Map<Long, Boolean> likedMap = new HashMap<>();
+        Map<Long, Boolean> scrappedMap = new HashMap<>();
+
+        // 현재 사용자 기준으로 liked/scrapped 플래그 세팅
+        for (Long pid : postLikes.findLikedPostIds(userId, ids)) {
+            likedMap.put(pid, Boolean.TRUE);
+        }
+        for (Long pid : postScraps.findScrappedPostIds(userId, ids)) {
+            scrappedMap.put(pid, Boolean.TRUE);
+        }
+
+        var mapped = content.stream()
+                .map(p -> {
+                    long likeCnt = likeCountMap.getOrDefault(p.getId(), 0L);
+                    boolean liked = Boolean.TRUE.equals(likedMap.get(p.getId()));
+                    boolean scrapped = Boolean.TRUE.equals(scrappedMap.get(p.getId()));
+                    return PostRes.of(p, likeCnt, liked, scrapped);
+                })
+                .toList();
+
+        return new PageImpl<>(mapped, page.getPageable(), page.getTotalElements());
     }
 }

@@ -42,6 +42,14 @@ public class CommentService {
         return comments.findByParentAndDeletedFalse(parent, pageable).map(CommentRes::of);
     }
 
+    /** 내가 작성한 댓글 목록 */
+    @Transactional(readOnly = true)
+    public Page<CommentRes> listMyComments(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        return comments.findByAuthor_IdAndDeletedFalse(userId, pageable)
+                .map(CommentRes::of);
+    }
+
     public Long write(Long userId, Long postId, CommentCreateReq req) {
         Post post = posts.findByIdAndDeletedFalse(postId)
                 .orElseThrow(() -> new IllegalArgumentException("게시물을 찾을 수 없습니다."));
