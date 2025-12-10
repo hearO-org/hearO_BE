@@ -61,7 +61,6 @@ public class S3ImageStorageService {
                     .bucket(bucket)
                     .key(key)
                     .contentType(contentType)
-                    .acl(ObjectCannedACL.PUBLIC_READ)
                     .build();
 
             s3Client.putObject(putReq, RequestBody.fromBytes(file.getBytes()));
