@@ -25,12 +25,22 @@ public class PostQueryService {
     private final PostLikeRepository postLikes;
     private final PostScrapRepository postScraps;
 
+    /** 전체 목록 */
     public Page<PostRes> list(int page, int size, Long userIdOrNull) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Post> p = posts.findAllByDeletedFalse(pageable);
         return attachReactions(p, userIdOrNull);
     }
 
+    /** 내가 작성한 게시물 목록 */
+    public Page<PostRes> listMyPosts(Long userId, int page, int size) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<Post> p = posts.findByAuthor_IdAndDeletedFalse(userId, pageable);
+        // 본인이 쓴 글 목록이라도 좋아요/스크랩 정보까지 포함해서 내려줌
+        return attachReactions(p, userId);
+    }
+
+    /** 검색 */
     public Page<PostRes> search(String q, PostCategory category, String tag, int page, int size, Long userIdOrNull) {
         Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
 
