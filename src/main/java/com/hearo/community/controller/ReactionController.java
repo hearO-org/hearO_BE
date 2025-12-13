@@ -1,6 +1,7 @@
 package com.hearo.community.controller;
 
 import com.hearo.community.dto.PostListRes;
+import com.hearo.community.dto.PostRes;
 import com.hearo.community.dto.ReactionRes;
 import com.hearo.community.service.ReactionService;
 import com.hearo.global.response.ApiResponse;
@@ -73,12 +74,22 @@ public class ReactionController {
     }
 
     /** 내 스크랩 목록 (스크랩한 시각 최신순) */
-    @GetMapping("/posts/scrap/mine")
+    @GetMapping("/posts/scrap/me")
     public ResponseEntity<ApiResponse<PostListRes>> myScraps(Authentication authentication,
                                                              @RequestParam(defaultValue = "0") int page,
                                                              @RequestParam(defaultValue = "20") int size) {
         Long uid = requireUserId(authentication);
-        Page<com.hearo.community.dto.PostRes> p = svc.listMyScraps(uid, page, size);
+        Page<PostRes> p = svc.listMyScraps(uid, page, size);
+        return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
+    }
+
+    /** 내가 좋아요한 게시물 목록 (좋아요한 시각 최신순) */
+    @GetMapping("/posts/like/me")
+    public ResponseEntity<ApiResponse<PostListRes>> myLikes(Authentication authentication,
+                                                            @RequestParam(defaultValue = "0") int page,
+                                                            @RequestParam(defaultValue = "20") int size) {
+        Long uid = requireUserId(authentication);
+        Page<PostRes> p = svc.listMyLikedPosts(uid, page, size);
         return ApiResponse.success(SuccessStatus.FETCHED, PostListRes.of(p));
     }
 

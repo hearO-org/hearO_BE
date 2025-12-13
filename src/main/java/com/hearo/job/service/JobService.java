@@ -63,8 +63,8 @@ public class JobService {
             JobRawResponse raw = fetchWithRetry(pageNo, fetchRows, 4, 400);
             validateHeader(raw);
 
-            var items = (raw.getBody() != null && raw.getBody().getItems() != null)
-                    ? raw.getBody().getItems().getItem() : List.<JobRawResponse.Item>of();
+            // 항상 null-safe: item 리스트가 null이어도 빈 리스트로 처리
+            List<JobRawResponse.Item> items = safeItems(raw);
             if (items.isEmpty()) break;
 
             for (JobRawResponse.Item i : items) {
@@ -73,7 +73,8 @@ public class JobService {
                 if (predicate.test(d)) bucket.add(d);
             }
 
-            pageNo++; scanned++;
+            pageNo++;
+            scanned++;
         }
 
         List<JobItemDto> pageItems = bucket.stream()
@@ -103,8 +104,8 @@ public class JobService {
             JobRawResponse raw = fetchWithRetry(pageNo, defaultFetchRows, 3, 300);
             validateHeader(raw);
 
-            var items = (raw.getBody() != null && raw.getBody().getItems() != null)
-                    ? raw.getBody().getItems().getItem() : List.<JobRawResponse.Item>of();
+            // null-safe
+            List<JobRawResponse.Item> items = safeItems(raw);
             if (items.isEmpty()) break;
 
             for (JobRawResponse.Item i : items) {
@@ -154,10 +155,24 @@ public class JobService {
         }
     }
 
-    private static JobPageDto toPageDto(JobRawResponse raw) {
+    /**
+     * 공통 null-safe item 리스트 추출
+     * - body == null → 빈 리스트
+     * - body.items == null → 빈 리스트
+     * - body.items.item == null → 빈 리스트
+     */
+    private static List<JobRawResponse.Item> safeItems(JobRawResponse raw) {
+        if (raw == null) return List.of();
         var body = raw.getBody();
-        var items = (body != null && body.getItems() != null && body.getItems().getItem() != null)
-                ? body.getItems().getItem() : List.<JobRawResponse.Item>of();
+        if (body == null || body.getItems() == null || body.getItems().getItem() == null) {
+            return List.of();
+        }
+        return body.getItems().getItem();
+    }
+
+    private static JobPageDto toPageDto(JobRawResponse raw) {
+        var body = (raw != null) ? raw.getBody() : null;
+        List<JobRawResponse.Item> items = safeItems(raw);
 
         List<JobItemDto> list = items.stream().map(JobService::mapToItem).toList();
         int pageNo     = nz(body != null ? body.getPageNo()     : null, 1);
@@ -210,7 +225,7 @@ public class JobService {
                 .regagnName(i.getRegagnName())
                 .offerregDt(i.getOfferregDt())
                 .regDt(i.getRegDt())
-                // 환경 세부
+                // 작업환경 세부
                 .envBothHands(nvl(raw.getEnvBothHands()))
                 .envEyesight(nvl(raw.getEnvEyesight()))
                 .envHandwork(nvl(raw.getEnvHandwork()))
@@ -242,6 +257,7 @@ public class JobService {
 
     /* --------- 공통 유틸 --------- */
     private static String nvl(String s) { return s == null ? "" : s; }
+
     private static int nz(Integer v, int def) { return v == null ? def : v; }
 
     private static boolean isTransient(Throwable t) {
@@ -258,9 +274,11 @@ public class JobService {
         }
         return false;
     }
+
     private static boolean isTooManyRequests(Throwable t) {
         return (t instanceof WebClientResponseException w) && w.getStatusCode().value() == 429;
     }
+
     private static String rootName(Throwable t) {
         Throwable c = t;
         while (c.getCause() != null) c = c.getCause();
@@ -277,10 +295,12 @@ public class JobService {
         }
         return true;
     }
+
     private static boolean equalsIfSet(String left, String expect) {
         if (expect == null || expect.isBlank()) return true;
         return nvl(left).equalsIgnoreCase(expect.trim());
     }
+
     private Predicate<JobDetailDto> buildPredicate(JobFilter f) {
         return d -> {
             if (f == null) return true;

@@ -4,6 +4,7 @@ import com.hearo.community.domain.Post;
 import com.hearo.community.domain.PostCategory;
 
 import java.time.LocalDateTime;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -24,7 +25,12 @@ public record PostRes(
         boolean scrapped
 ) {
     public static PostRes of(Post p){
-        List<String> imgs = p.getImages().stream().map(i -> i.getUrl()).toList();
+        List<String> imgs = p.getImages().stream()
+                .map(i -> i.getUrl())
+                .toList();
+
+        Set<String> tagsCopy = new LinkedHashSet<>(p.getTags());
+
         return new PostRes(
                 p.getId(),
                 p.getAuthor().getId(),
@@ -34,15 +40,22 @@ public record PostRes(
                 p.getCategory(),
                 p.getVisibility().name(),
                 imgs,
-                p.getTags(),
+                tagsCopy,
                 p.getCreatedAt(),
                 p.getModifiedAt(),
-                0L, false, false
+                0L,
+                false,
+                false
         );
     }
 
     public static PostRes of(Post p, long likeCount, boolean liked, boolean scrapped){
-        List<String> imgs = p.getImages().stream().map(i -> i.getUrl()).toList();
+        List<String> imgs = p.getImages().stream()
+                .map(i -> i.getUrl())
+                .toList();
+
+        Set<String> tagsCopy = new LinkedHashSet<>(p.getTags());
+
         return new PostRes(
                 p.getId(),
                 p.getAuthor().getId(),
@@ -52,7 +65,7 @@ public record PostRes(
                 p.getCategory(),
                 p.getVisibility().name(),
                 imgs,
-                p.getTags(),
+                tagsCopy,
                 p.getCreatedAt(),
                 p.getModifiedAt(),
                 likeCount,

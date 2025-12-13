@@ -1,4 +1,3 @@
-// file: src/main/java/com/hearo/community/domain/PostLike.java
 package com.hearo.community.domain;
 
 import com.hearo.global.entity.BaseTimeEntity;

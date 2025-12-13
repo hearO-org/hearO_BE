@@ -37,6 +37,15 @@ public class CommentController {
         return ApiResponse.success(SuccessStatus.FETCHED, svc.listReplies(commentId, page, size));
     }
 
+    /** 내가 작성한 댓글 목록 */
+    @GetMapping("/comments/me")
+    public ResponseEntity<ApiResponse<Page<CommentRes>>> myComments(Authentication authentication,
+                                                                    @RequestParam(defaultValue = "0") int page,
+                                                                    @RequestParam(defaultValue = "20") int size) {
+        Long uid = requireUserId(authentication);
+        return ApiResponse.success(SuccessStatus.FETCHED, svc.listMyComments(uid, page, size));
+    }
+
     /** 댓글 작성 */
     @PostMapping("/{postId}/comments")
     public ResponseEntity<ApiResponse<Long>> write(Authentication authentication,

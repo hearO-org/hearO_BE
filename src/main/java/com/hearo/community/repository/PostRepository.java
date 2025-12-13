@@ -14,12 +14,23 @@ import java.util.Optional;
 
 public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificationExecutor<Post> {
 
-    // images + tags 모두 로딩 (tags는 @ElementCollection 이라 LAZY 초기화 이슈 방지)
-    @EntityGraph(attributePaths = {"images", "tags"})
+    /**
+     * 단건 조회
+     */
+    @EntityGraph(attributePaths = {"images"})
     Optional<Post> findByIdAndDeletedFalse(Long id);
 
-    @EntityGraph(attributePaths = {"images", "tags"})
+    /**
+     * 전체 목록 조회
+     */
+    @EntityGraph(attributePaths = {"images"})
     Page<Post> findAllByDeletedFalse(Pageable pageable);
+
+    /**
+     * 특정 사용자가 작성한 게시글 목록
+     */
+    @EntityGraph(attributePaths = {"images"})
+    Page<Post> findByAuthor_IdAndDeletedFalse(Long authorId, Pageable pageable);
 
     boolean existsByIdAndAuthor_Id(Long postId, Long authorId);
 
@@ -41,4 +52,21 @@ public interface PostRepository extends JpaRepository<Post, Long>, JpaSpecificat
             where s.user.id = :uid and p.deleted = false
             """)
     Page<Post> findScrappedPosts(@Param("uid") Long userId, Pageable pageable);
+
+    // 내가 좋아요한 게시물 목록 (좋아요한 시각 최신순)
+    @EntityGraph(attributePaths = {"images"})
+    @Query(value = """
+            select p
+            from PostLike l
+            join l.post p
+            where l.user.id = :uid and p.deleted = false
+            order by l.createdAt desc
+            """,
+            countQuery = """
+            select count(l)
+            from PostLike l
+            join l.post p
+            where l.user.id = :uid and p.deleted = false
+            """)
+    Page<Post> findLikedPosts(@Param("uid") Long userId, Pageable pageable);
 }
